@@ -747,13 +747,9 @@ function openManualLogger(slot) {
 }
 
 function openPhotoLogger(slot) {
-  const noKey = !hasApiKey();
   const html = `
     <h2>Foto del plato</h2>
     <p>Subiré la foto a la IA y estimaré las calorías y macros automáticamente.</p>
-    ${noKey ? `<div style="background:rgba(255,84,112,0.1); border:1px solid var(--danger); border-radius:8px; padding:12px; color:var(--danger); margin-bottom:14px; font-size:13px;">
-      Necesitas configurar tu API key de Anthropic en <strong>Perfil</strong> antes de usar el análisis por foto.
-    </div>` : ""}
     <label class="photo-upload" id="ph-upload">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="32" height="32"><path d="M21 19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h4l2 3h3a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
       <span>Toca para tomar o subir foto</span>
@@ -1400,15 +1396,6 @@ views.chat = function () {
       </div>
       <button class="btn" id="chat-clear">Limpiar conversación</button>
     </div>
-    ${!hasApiKey() ? `
-      <div class="card" style="border-color: var(--danger); background: rgba(255,84,112,0.05); margin-bottom: 18px;">
-        <div style="font-weight:600; color:var(--danger); margin-bottom: 6px;">API key no configurada</div>
-        <p style="color:var(--text-muted); margin-bottom: 12px; font-size:13px;">
-          Para usar el asistente IA necesitas tu propia API key de Anthropic. Ve a <strong>Perfil</strong> y agrégala. Se guarda solo en tu navegador.
-        </p>
-        <button class="btn btn-primary" data-go-profile>Ir a Perfil</button>
-      </div>
-    ` : ""}
     <div class="card chat-card">
       <div class="chat-messages" id="chat-messages">
         ${messages.length === 0 ? `
@@ -1447,24 +1434,36 @@ views.chat = function () {
   form.addEventListener("submit", async e => {
     e.preventDefault();
     const text = input.value.trim(); if (!text) return;
-    if (!hasApiKey()) { toast("Configura tu API key en Perfil"); return; }
     input.value = ""; input.disabled = true;
     document.getElementById("chat-send").disabled = true;
+
     state.chat.messages.push({ role: "user", content: text, ts: Date.now() });
     saveState();
     appendBubble({ role: "user", content: text });
-    appendBubble({ role: "assistant", content: "…", typing: true });
+
+    // Burbuja del asistente que se va llenando con cada chunk
+    appendBubble({ role: "assistant", content: "" });
+    const ms = document.getElementById("chat-messages");
+    const streamBubble = ms.lastElementChild;
+    streamBubble.classList.add("streaming");
+    streamBubble.innerHTML = `<span style="color:var(--text-muted)">…</span>`;
     scrollChatToBottom();
+
     try {
-      const reply = await sendChatMessage(text);
-      const last = document.querySelector("#chat-messages .chat-bubble.typing"); if (last) last.remove();
+      const reply = await sendChatMessage(text, (_chunk, full) => {
+        streamBubble.innerHTML = formatChat(full);
+        scrollChatToBottom();
+      });
+      streamBubble.classList.remove("streaming");
+      streamBubble.innerHTML = formatChat(reply);
       state.chat.messages.push({ role: "assistant", content: reply, ts: Date.now() });
-      saveState(); appendBubble({ role: "assistant", content: reply });
+      saveState();
     } catch (err) {
-      const last = document.querySelector("#chat-messages .chat-bubble.typing"); if (last) last.remove();
-      appendBubble({ role: "assistant", content: `Error: ${err.message || err}` });
+      streamBubble.classList.remove("streaming");
+      streamBubble.innerHTML = formatChat(`Error: ${err.message || err}`);
     } finally {
-      input.disabled = false; document.getElementById("chat-send").disabled = false;
+      input.disabled = false;
+      document.getElementById("chat-send").disabled = false;
       scrollChatToBottom();
     }
   });
@@ -1573,13 +1572,8 @@ views.profile = function () {
     </div>
 
     <div class="card" style="margin-top: 18px;">
-      <div class="card-title">Asistente IA · API key de Anthropic</div>
-      <p style="color:var(--text-muted); font-size:13px; margin-bottom: 12px;">
-        Necesaria para chat y análisis de fotos de comida. Tu key se guarda solo en este navegador.
-        Consíguela en <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a>.
-      </p>
+      <div class="card-title">Preferencias</div>
       <div class="field-row">
-        <div class="field" style="flex:2;"><label>API Key</label><input type="password" id="pf-apikey" value="${escapeHtml(state.apiKey)}" placeholder="sk-ant-…"></div>
         <div class="field"><label>Unidades de peso por defecto</label>
           <select id="pf-units">
             <option value="kg" ${state.units==="kg"?"selected":""}>Kilogramos (kg)</option>
@@ -1587,7 +1581,7 @@ views.profile = function () {
           </select>
         </div>
       </div>
-      ${hasApiKey() ? `<p style="color:var(--success); font-size:13px;">✓ API key configurada</p>` : ""}
+      <p style="color:var(--success); font-size:13px; margin-top: 8px;">✓ Asistente IA conectado vía servidor seguro. No necesitas configurar API key.</p>
     </div>
 
     <div style="display:flex; gap:10px; margin-top:18px; flex-wrap:wrap;">
@@ -1612,7 +1606,6 @@ views.profile = function () {
       weeks: parseInt(v("pf-weeks")) || 12, trainingDays: Math.max(0, Math.min(7, parseInt(v("pf-tdays")) || 0)),
       trainingGoal: v("pf-tgoal"), distribution: v("pf-dist")
     });
-    state.apiKey = v("pf-apikey").trim();
     state.units = v("pf-units");
     state.setupComplete = true;
     saveState(); toast("Perfil guardado"); views.profile();
