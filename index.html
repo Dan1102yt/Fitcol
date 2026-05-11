@@ -10,9 +10,12 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script type="module" src="supabase-config.js"></script>
 </head>
 <body>
-  <div class="app">
+  <div id="auth-root" class="auth-root" style="display:none;"></div>
+  <div id="app-shell" class="app" style="display:none;">
     <aside class="sidebar">
       <div class="logo">Fitcol</div>
       <nav>
@@ -42,6 +45,7 @@
         </button>
       </nav>
       <div class="sidebar-footer">
+        <div id="user-badge" class="user-badge"></div>
         <button id="theme-toggle">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="theme-icon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
           <span id="theme-label">Modo claro</span>
@@ -81,5 +85,9 @@
   <script src="data.js"></script>
   <script src="ai.js"></script>
   <script src="app.js"></script>
+  <script src="cloud-sync.js"></script>
+  <script src="food-search.js"></script>
+  <script src="excel-importer.js"></script>
+  <script src="auth.js"></script>
 </body>
 </html>

@@ -5,16 +5,16 @@
 
 const WORKER_URL = "https://fitcol-api.davidroa1102.workers.dev/chat";
 
-// Compatibilidad: la app sigue consultando hasApiKey() en varios puntos.
-// Como ahora la auth está en el Worker, siempre estamos "listos".
 function hasApiKey() { return true; }
 
 // -----------------------------------------------------
-// Llamada al Worker con streaming SSE
+// callWorker — POST a /chat con streaming SSE
+// Body: { message, image?, contexto_usuario? }
 // -----------------------------------------------------
-async function callWorker({ message, image, onChunk } = {}) {
+async function callWorker({ message, image, contexto_usuario, onChunk } = {}) {
   const body = { message };
   if (image) body.image = image;
+  if (contexto_usuario) body.contexto_usuario = contexto_usuario;
 
   const res = await fetch(WORKER_URL, {
     method: "POST",
@@ -27,7 +27,6 @@ async function callWorker({ message, image, onChunk } = {}) {
     try { err = await res.json(); } catch { err = { error: `HTTP ${res.status}` }; }
     throw new Error(err.error || `HTTP ${res.status}`);
   }
-
   if (!res.body) throw new Error("La respuesta no contiene stream.");
 
   const reader = res.body.getReader();
@@ -39,10 +38,8 @@ async function callWorker({ message, image, onChunk } = {}) {
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-
     const parts = buffer.split("\n\n");
     buffer = parts.pop() ?? "";
-
     for (const block of parts) {
       const dataLine = block.split("\n").find(l => l.startsWith("data: "));
       if (!dataLine) continue;
@@ -55,103 +52,82 @@ async function callWorker({ message, image, onChunk } = {}) {
           fullText += chunk;
           if (onChunk) onChunk(chunk, fullText);
         }
-      } catch {
-        // ignorar JSON parcial / no-data lines
-      }
+      } catch { /* ignorar JSON parcial */ }
     }
   }
   return fullText;
 }
 
 // -----------------------------------------------------
-// Construye el contexto del usuario para el chat
-// Como el Worker es single-turn con system prompt fijo,
-// inyectamos los datos del usuario dentro del propio mensaje.
+// Recolecta contexto desde Supabase (si hay sesión) o de
+// localStorage (state) si no.
 // -----------------------------------------------------
-function buildUserContext(state) {
+async function fetchUserContext() {
+  // Datos básicos del perfil + cálculos
   const p = state.profile;
   const n = calcNutrition(p);
-  const sinceISO = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
+  const perfil = {
+    nombre: p.name || null,
+    edad: p.age, sexo: p.sex,
+    altura_cm: p.height, peso_kg: p.weight, peso_meta_kg: p.targetWeight, plazo_semanas: p.weeks,
+    objetivo: p.goal, actividad: p.activity,
+    meta_diaria: { kcal: n.kcal, proteina: n.protein, carbos: n.carbs, grasa: n.fat },
+    entrenamiento: { dias_semana: p.trainingDays, objetivo: p.trainingGoal, distribucion: p.distribution }
+  };
 
-  const recentWeights = (state.weightLog || [])
-    .filter(w => w.date >= sinceISO)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(-10);
+  let entrenamientos = [];
+  let pesos = [];
+  let comidas = [];
 
-  const recentSets = (state.setLog || []).filter(s => s.date >= sinceISO);
-  const byExercise = {};
-  recentSets.forEach(s => {
-    if (!byExercise[s.exerciseName]) byExercise[s.exerciseName] = [];
-    byExercise[s.exerciseName].push(s);
-  });
-  const exerciseLines = Object.entries(byExercise).map(([name, sets]) => {
-    const sorted = sets.slice().sort((a, b) => a.date.localeCompare(b.date));
-    const last = sorted[sorted.length - 1];
-    const maxW = Math.max(...sets.map(s => +s.weight || 0));
-    return `- ${name}: ${sorted.length} series. Máx: ${maxW}${last.unit}. Última: ${last.weight}${last.unit} × ${last.reps} reps (${last.date}).`;
-  });
+  if (typeof cloudAvailable === "function" && cloudAvailable()) {
+    try {
+      const [entr, pes, com] = await Promise.all([
+        window.supabaseClient.from("entrenamientos").select("fecha,ejercicio,series,repeticiones,peso_kg,notas").order("fecha", { ascending: false }).limit(10),
+        window.supabaseClient.from("registros_peso").select("fecha,peso,porcentaje_grasa,pecho,cintura,cadera,bicep").order("fecha", { ascending: false }).limit(5),
+        window.supabaseClient.from("comidas").select("fecha,nombre,calorias,proteina,carbohidratos,grasas").order("fecha", { ascending: false }).limit(10)
+      ]);
+      entrenamientos = entr.data || [];
+      pesos = pes.data || [];
+      comidas = com.data || [];
+    } catch (e) { console.warn("fetchUserContext cloud:", e); }
+  }
 
-  const dietByDay = {};
-  (state.dietLog || []).filter(d => d.date >= sinceISO).forEach(d => {
-    if (!dietByDay[d.date]) dietByDay[d.date] = { kcal: 0, p: 0, c: 0, f: 0 };
-    dietByDay[d.date].kcal += d.kcal;
-    dietByDay[d.date].p += d.p;
-    dietByDay[d.date].c += d.c;
-    dietByDay[d.date].f += d.f;
-  });
-  const dietLines = Object.entries(dietByDay)
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .slice(0, 5)
-    .map(([date, t]) => `- ${date}: ${Math.round(t.kcal)} kcal, ${Math.round(t.p)}g P, ${Math.round(t.c)}g C, ${Math.round(t.f)}g G`);
+  // Fallback / complemento desde state local si faltan datos cloud
+  if (!entrenamientos.length && state.setLog?.length) {
+    entrenamientos = state.setLog.slice(-10).reverse().map(s => ({
+      fecha: s.date, ejercicio: s.exerciseName, series: 1,
+      repeticiones: s.reps, peso_kg: s.unit === "lb" ? Math.round(s.weight * 0.4536 * 10) / 10 : s.weight,
+      notas: s.unit === "lb" ? `original: ${s.weight} lb` : null
+    }));
+  }
+  if (!pesos.length && state.weightLog?.length) {
+    pesos = state.weightLog.slice(-5).reverse().map(w => ({ fecha: w.date, peso: w.weight }));
+  }
+  if (!comidas.length && state.dietLog?.length) {
+    comidas = state.dietLog.slice(-10).reverse().map(d => ({
+      fecha: d.date, nombre: `[${d.slot}] ${d.name}`,
+      calorias: d.kcal, proteina: d.p, carbohidratos: d.c, grasas: d.f
+    }));
+  }
 
-  const workoutsByWeek = {};
-  (state.workouts || []).filter(w => w.date >= sinceISO).forEach(w => {
-    const d = new Date(w.date);
-    const key = `${d.getFullYear()}-W${Math.ceil((((d - new Date(d.getFullYear(), 0, 1)) / 86400000) + 1) / 7)}`;
-    workoutsByWeek[key] = (workoutsByWeek[key] || 0) + 1;
-  });
-  const weekLines = Object.entries(workoutsByWeek)
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .slice(0, 5)
-    .map(([k, c]) => `- ${k}: ${c} sesiones`);
-
-  return `Mis datos:
-- Sexo ${p.sex}, ${p.age} años, ${p.height} cm, ${p.weight} kg → meta ${p.targetWeight} kg en ${p.weeks} sem
-- Objetivo: ${({ bajar: "perder", subir: "ganar", mantener: "mantener" })[p.goal]} peso
-- Actividad fuera del gym: ${p.activity}
-- Meta diaria calculada: ${n.kcal} kcal · ${n.protein}g P · ${n.carbs}g C · ${n.fat}g G
-- Entrenamiento: ${p.trainingDays} días/sem · objetivo ${p.trainingGoal} · distribución ${p.distribution}
-
-Pesos registrados recientemente:
-${recentWeights.length ? recentWeights.map(w => `- ${w.date}: ${w.weight} kg`).join("\n") : "(sin registros)"}
-
-Series por ejercicio (últimos 60 días):
-${exerciseLines.length ? exerciseLines.join("\n") : "(aún no registra series)"}
-
-Sesiones por semana:
-${weekLines.length ? weekLines.join("\n") : "(sin sesiones)"}
-
-Últimos días de dieta:
-${dietLines.length ? dietLines.join("\n") : "(sin comidas registradas)"}`;
+  return { perfil, entrenamientos, pesos, comidas };
 }
 
 // -----------------------------------------------------
-// Chat con contexto + historial
+// Chat con contexto de usuario + historial
 // -----------------------------------------------------
 async function sendChatMessage(userText, onChunk) {
-  const context = buildUserContext(state);
-  const history = (state.chat?.messages || []).slice(-8);
+  const contexto_usuario = await fetchUserContext();
+  const history = (state.chat?.messages || []).slice(-6);
   const historyText = history.length
-    ? "\n\nConversación previa:\n" + history.map(m => `${m.role === "user" ? "Usuario" : "Asistente"}: ${m.content}`).join("\n")
+    ? "\n\nConversación previa:\n" + history.map(m => `${m.role === "user" ? "Usuario" : "Asistente"}: ${m.content}`).join("\n") + "\n"
     : "";
-
-  const fullMessage = `${context}${historyText}\n\nPregunta actual del usuario: ${userText}`;
-  return await callWorker({ message: fullMessage, onChunk });
+  const message = `${historyText}\nPregunta actual: ${userText}`;
+  return await callWorker({ message, contexto_usuario, onChunk });
 }
 
 // -----------------------------------------------------
 // Análisis de foto de comida
-// El Worker tiene system prompt general; pedimos JSON estricto en el mensaje.
 // -----------------------------------------------------
 async function analyzeFoodPhoto(dataUrl) {
   const message = `Analiza esta foto de comida (preferiblemente colombiana) y estima sus macros con la mayor precisión posible.

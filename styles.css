@@ -977,3 +977,284 @@ a { color: var(--accent); text-decoration: none; }
   .set-table-head, .set-row { grid-template-columns: 30px 1fr 64px 38px; gap: 4px; font-size: 12px; }
   .meal-actions .btn { font-size: 11px; padding: 6px 10px; }
 }
+
+/* =====================================================
+   Pantalla de Login
+===================================================== */
+.auth-root {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at top, rgba(0,210,168,0.08), transparent 60%), var(--bg);
+  padding: 20px;
+  z-index: 500;
+}
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 36px 28px;
+  box-shadow: var(--shadow);
+}
+.auth-logo {
+  font-size: 30px;
+  font-weight: 800;
+  background: var(--gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-align: center;
+  letter-spacing: -0.5px;
+}
+.auth-tag {
+  text-align: center;
+  color: var(--text-muted);
+  margin: 4px 0 24px;
+  font-size: 14px;
+}
+.auth-banner {
+  background: rgba(255,181,71,0.12);
+  border: 1px solid var(--warning);
+  border-radius: 10px;
+  padding: 12px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.auth-banner code { background: var(--bg-elev-2); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+.btn-google {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: white;
+  color: #1a2030;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 14px;
+  border: 1px solid #dadce0;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.btn-google:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 20px 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.auth-divider::before, .auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.auth-form label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-top: 12px;
+  margin-bottom: 4px;
+}
+.auth-form input {
+  width: 100%;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 11px 13px;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+}
+.auth-form input:focus { border-color: var(--accent); }
+.auth-form button { margin-top: 18px; }
+.auth-form .btn-primary {
+  width: 100%;
+  background: var(--gradient);
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+.auth-toggle {
+  text-align: center;
+  margin-top: 18px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.auth-toggle a {
+  margin-left: 6px;
+  color: var(--accent);
+  font-weight: 600;
+}
+.auth-error {
+  background: rgba(255,84,112,0.1);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-top: 14px;
+}
+
+/* User badge en sidebar */
+.user-badge {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--bg-elev-2);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.user-badge:empty { display: none; }
+.user-badge .user-email {
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+/* =====================================================
+   Foto: cámara o galería
+===================================================== */
+.foto-opciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.foto-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+}
+.foto-preview img {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+.photo-upload-actions {
+  cursor: default;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* Modal weight details */
+.wm-details {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 12px;
+}
+.wm-details summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 8px;
+  user-select: none;
+}
+.wm-details[open] summary { color: var(--accent); margin-bottom: 12px; }
+
+/* =====================================================
+   Buscador comidas
+===================================================== */
+.food-result-card {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.food-portion-row {
+  display: grid;
+  grid-template-columns: auto 90px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+.food-portion-row label { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.food-portion-row input {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+}
+.fs-calc { color: var(--text); font-size: 12px; }
+
+/* Excel drop zone */
+.xls-drop {
+  border: 2px dashed var(--border);
+  border-radius: 14px;
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: var(--transition);
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.xls-drop:hover, .xls-drop.dragging { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+/* =====================================================
+   Fixes responsive — Entreno + Progreso
+===================================================== */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+}
+.table-responsive table {
+  min-width: 500px;
+  width: 100%;
+  border-collapse: collapse;
+}
+.chart-container { position: relative; width: 100%; max-width: 100%; overflow: hidden; }
+.chart-container canvas { max-width: 100% !important; height: auto !important; }
+
+@media (max-width: 480px) {
+  .content { padding: 14px 10px 90px; }
+  .view-header h1 { font-size: 20px; }
+  .view-header p { font-size: 13px; }
+  .grid-2, .grid-3, .grid-4 { display: flex; flex-direction: column; gap: 12px; }
+  .stat-card .value { font-size: 22px; }
+  .workout-day { padding: 14px 10px; }
+  .workout-day-header { flex-wrap: wrap; gap: 8px; }
+  .exercise-log-block { padding: 10px 8px; }
+  .food-portion-row { grid-template-columns: 1fr; }
+  .food-portion-row input { width: 100%; }
+  .auth-card { padding: 24px 18px; }
+  .modal { padding: 20px 16px; max-height: 92vh; }
+  .modal h2 { font-size: 19px; }
+  .field-row { gap: 10px; }
+}
+

@@ -170,8 +170,10 @@ function dailyTotals(dateISO) {
 }
 
 function logMeal(entry) {
-  state.dietLog.push({ id: uid(), date: todayISO(), source: "plan", ...entry });
+  const full = { id: uid(), date: todayISO(), source: "plan", ...entry };
+  state.dietLog.push(full);
   saveState();
+  if (typeof cloudInsertComida === "function") cloudInsertComida(full);
 }
 
 // =====================================================
@@ -436,15 +438,120 @@ function macroBar(label, key, current, total, unit = "%") {
   </div>`;
 }
 
-function quickLogWeight() {
-  const w = prompt("¿Cuál es tu peso actual (kg)?");
-  const weight = parseFloat(w);
-  if (!weight || weight < 20 || weight > 400) return;
+function quickLogWeight() { openWeightModal(); }
+
+// Modal completo: peso obligatorio + medidas opcionales + foto opcional
+function openWeightModal() {
+  let fotoBase64 = null;
   const today = todayISO();
-  state.weightLog = state.weightLog.filter(e => e.date !== today);
-  state.weightLog.push({ date: today, weight });
-  state.profile.weight = weight;
-  saveState(); toast("Peso registrado"); showView(currentView);
+  const html = `
+    <h2>Registrar peso</h2>
+    <p style="color:var(--text-muted); font-size:13px;">Los campos con * son obligatorios.</p>
+    <div class="field-row">
+      <div class="field"><label>Fecha *</label><input type="date" id="wm-fecha" value="${today}" required></div>
+      <div class="field"><label>Peso (kg) *</label><input type="number" id="wm-peso" step="0.1" placeholder="ej: 75.5" required></div>
+    </div>
+    <details class="wm-details">
+      <summary>Medidas opcionales</summary>
+      <div class="field-row">
+        <div class="field"><label>% Grasa corporal</label><input type="number" id="wm-grasa" step="0.1" placeholder="18.5"></div>
+        <div class="field"><label>Pecho (cm)</label><input type="number" id="wm-pecho" step="0.5"></div>
+        <div class="field"><label>Cintura (cm)</label><input type="number" id="wm-cintura" step="0.5"></div>
+        <div class="field"><label>Cadera (cm)</label><input type="number" id="wm-cadera" step="0.5"></div>
+        <div class="field"><label>Bícep (cm)</label><input type="number" id="wm-bicep" step="0.5"></div>
+      </div>
+      <label class="card-title" style="margin-top: 10px;">Foto corporal (opcional)</label>
+      ${photoPickerHtml("wm-foto")}
+    </details>
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <button class="btn btn-primary btn-block" id="wm-save">Guardar registro</button>
+      <button class="btn btn-block" id="wm-cancel">Cancelar</button>
+    </div>
+  `;
+  const m = modal(html);
+  m.root.querySelector("#wm-cancel").addEventListener("click", m.close);
+  bindPhotoPicker(m.root, "wm-foto", dataUrl => { fotoBase64 = dataUrl; });
+
+  m.root.querySelector("#wm-save").addEventListener("click", async () => {
+    const v = sel => m.root.querySelector(sel).value;
+    const fecha = v("#wm-fecha");
+    const peso = parseFloat(v("#wm-peso"));
+    if (!fecha || !peso || peso < 20 || peso > 400) { toast("Indica una fecha y un peso válido."); return; }
+    const grasa = parseFloat(v("#wm-grasa")) || null;
+    const pecho = parseFloat(v("#wm-pecho")) || null;
+    const cintura = parseFloat(v("#wm-cintura")) || null;
+    const cadera = parseFloat(v("#wm-cadera")) || null;
+    const bicep = parseFloat(v("#wm-bicep")) || null;
+
+    state.weightLog = state.weightLog.filter(e => e.date !== fecha);
+    state.weightLog.push({ date: fecha, weight: peso });
+    state.profile.weight = peso;
+
+    if (pecho || cintura || cadera || bicep || grasa) {
+      state.measurements = state.measurements.filter(e => e.date !== fecha);
+      const meas = { date: fecha };
+      if (pecho)   meas.chest = pecho;
+      if (cintura) meas.waist = cintura;
+      if (cadera)  meas.hips = cadera;
+      if (bicep)   meas.leftArm = bicep;
+      if (grasa)   meas.bodyFat = grasa;
+      state.measurements.push(meas);
+    }
+    if (fotoBase64) state.photos.push({ id: uid(), date: fecha, dataUrl: fotoBase64 });
+    saveState();
+
+    if (typeof cloudInsertRegistroPeso === "function") {
+      await cloudInsertRegistroPeso({
+        fecha, peso,
+        porcentaje_grasa: grasa, pecho, cintura, cadera, bicep,
+        foto_url: fotoBase64
+      });
+    }
+
+    toast("Peso registrado");
+    m.close();
+    showView(currentView);
+  });
+}
+
+// =====================================================
+// Photo picker reutilizable (cámara o galería)
+// =====================================================
+function photoPickerHtml(idBase) {
+  return `
+    <div class="foto-opciones">
+      <button type="button" class="btn btn-sm" data-pick-cam="${idBase}">Tomar foto</button>
+      <button type="button" class="btn btn-sm" data-pick-gal="${idBase}">Elegir de galería</button>
+      <input type="file" id="${idBase}-cam" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="${idBase}-gal" accept="image/*" style="display:none">
+      <div id="${idBase}-preview" class="foto-preview" style="display:none;">
+        <img id="${idBase}-img">
+        <button type="button" class="btn btn-sm" data-pick-clear="${idBase}">Quitar foto</button>
+      </div>
+    </div>
+  `;
+}
+function bindPhotoPicker(root, idBase, onPick) {
+  const cam = root.querySelector(`#${idBase}-cam`);
+  const gal = root.querySelector(`#${idBase}-gal`);
+  const preview = root.querySelector(`#${idBase}-preview`);
+  const img = root.querySelector(`#${idBase}-img`);
+  root.querySelector(`[data-pick-cam="${idBase}"]`).addEventListener("click", () => cam.click());
+  root.querySelector(`[data-pick-gal="${idBase}"]`).addEventListener("click", () => gal.click());
+  root.querySelector(`[data-pick-clear="${idBase}"]`).addEventListener("click", () => {
+    preview.style.display = "none"; img.src = "";
+    cam.value = ""; gal.value = "";
+    onPick(null);
+  });
+  const handle = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const dataUrl = await compressImage(file, 1024);
+    img.src = dataUrl;
+    preview.style.display = "flex";
+    onPick(dataUrl);
+  };
+  cam.addEventListener("change", handle);
+  gal.addEventListener("change", handle);
 }
 
 // =====================================================
@@ -569,6 +676,7 @@ function renderDietLogTab(n) {
     <div class="card" style="margin-bottom: 18px;">
       <div class="card-title">Registrar comida adicional</div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-primary" id="add-search">Buscar alimento</button>
         <button class="btn" id="add-from-custom">Desde mis comidas</button>
         <button class="btn" id="add-photo">Foto + IA</button>
         <button class="btn" id="add-manual">Manual</button>
@@ -592,6 +700,7 @@ function renderDietLogTab(n) {
       }
     </div>
   `;
+  document.getElementById("add-search").addEventListener("click", () => openFoodSearch("snack"));
   document.getElementById("add-from-custom").addEventListener("click", openCustomFoodPicker);
   document.getElementById("add-photo").addEventListener("click", () => openPhotoLogger("snack"));
   document.getElementById("add-manual").addEventListener("click", () => openManualLogger("snack"));
@@ -747,27 +856,21 @@ function openManualLogger(slot) {
 }
 
 function openPhotoLogger(slot) {
+  let currentDataUrl = null;
   const html = `
     <h2>Foto del plato</h2>
     <p>Subiré la foto a la IA y estimaré las calorías y macros automáticamente.</p>
-    <label class="photo-upload" id="ph-upload">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="32" height="32"><path d="M21 19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h4l2 3h3a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-      <span>Toca para tomar o subir foto</span>
-      <input type="file" accept="image/*" id="ph-input" capture="environment">
-    </label>
-    <div id="ph-preview" style="display:none; margin-top:14px;"></div>
+    ${photoPickerHtml("ph-foto")}
     <div id="ph-result" style="display:none; margin-top:14px;"></div>
     <button class="btn btn-block" id="ph-cancel" style="margin-top:14px;">Cancelar</button>
     <input type="hidden" id="ph-slot" value="${slot}">
   `;
   const m = modal(html);
   m.root.querySelector("#ph-cancel").addEventListener("click", m.close);
-  m.root.querySelector("#ph-input").addEventListener("change", async e => {
-    const file = e.target.files[0]; if (!file) return;
-    const dataUrl = await compressImage(file, 1024);
-    m.root.querySelector("#ph-preview").style.display = "block";
-    m.root.querySelector("#ph-preview").innerHTML = `<img src="${dataUrl}" style="max-width:100%; border-radius:8px;">`;
+  bindPhotoPicker(m.root, "ph-foto", async (dataUrl) => {
+    currentDataUrl = dataUrl;
     const result = m.root.querySelector("#ph-result");
+    if (!dataUrl) { result.style.display = "none"; result.innerHTML = ""; return; }
     result.style.display = "block";
     result.innerHTML = `<div style="color:var(--text-muted); font-size:13px;">Analizando con IA…</div>`;
     try {
@@ -787,11 +890,9 @@ function openPhotoLogger(slot) {
       `;
       m.root.querySelector("#ph-confirm").addEventListener("click", () => {
         const s = m.root.querySelector("#ph-slot").value;
-        compressImage(file, 400).then(small => {
-          logMeal({ slot: s, name: r.nombre, kcal: r.kcal, p: r.p, c: r.c, f: r.f, source: "photo", photo: small });
-          toast("Comida registrada por IA");
-          m.close(); views.diet();
-        });
+        logMeal({ slot: s, name: r.nombre, kcal: r.kcal, p: r.p, c: r.c, f: r.f, source: "photo", photo: currentDataUrl });
+        toast("Comida registrada por IA");
+        m.close(); views.diet();
       });
     } catch (err) {
       result.innerHTML = `<div style="color:var(--danger); font-size:13px;">${escapeHtml(err.message || String(err))}</div>`;
@@ -959,6 +1060,7 @@ function attachSetRowListeners(row) {
       const item = { id: uid(), date: todayISO(), sessionId: row.dataset.session, exerciseName: row.dataset.exname, group: row.dataset.group, weight: w, reps: r, unit: u };
       state.setLog.push(item);
       row.dataset.id = item.id;
+      if (typeof cloudInsertSet === "function") cloudInsertSet(item);
     }
     state.units = u; saveState();
     row.classList.add("done"); check.classList.add("done");
@@ -1094,6 +1196,7 @@ function renderWorkoutCustom() {
       <div class="card-title">Mis rutinas <span class="card-meta">${state.customRoutines.length}</span></div>
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 14px;">
         <button class="btn btn-primary" id="new-routine">+ Nueva rutina</button>
+        <button class="btn" id="import-excel">Importar historial Excel</button>
       </div>
       ${state.customRoutines.length === 0 ?
         `<div class="empty-state"><p>Aún no tienes rutinas personales. Crea una nueva.</p></div>` :
@@ -1140,6 +1243,8 @@ function renderWorkoutCustom() {
     </div>
   `;
   document.getElementById("new-routine").addEventListener("click", () => openRoutineEditor(null));
+  const importBtn = document.getElementById("import-excel");
+  if (importBtn) importBtn.addEventListener("click", () => openExcelImporter());
   document.querySelectorAll(".cr-activate").forEach(b => b.addEventListener("click", () => {
     state.useCustomRoutine = true; state.activeCustomRoutineId = b.dataset.id; saveState(); views.workout();
   }));
@@ -1328,11 +1433,16 @@ views.progress = function () {
     <div class="card">
       <div class="card-title">Fotos de progreso <span class="card-meta">${state.photos.length} fotos</span></div>
       <div class="photo-grid">
-        <label class="photo-upload">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="32" height="32"><circle cx="12" cy="12" r="9"/><path d="M12 8v8 M8 12h8"/></svg>
-          <span>Subir foto</span>
-          <input type="file" accept="image/*" id="photo-input">
-        </label>
+        <div class="photo-upload photo-upload-actions">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="28" height="28"><circle cx="12" cy="12" r="9"/><path d="M12 8v8 M8 12h8"/></svg>
+          <span>Añadir foto</span>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="btn btn-sm" id="photo-cam">Cámara</button>
+            <button type="button" class="btn btn-sm" id="photo-gal">Galería</button>
+          </div>
+          <input type="file" accept="image/*" capture="environment" id="photo-input-cam" style="display:none">
+          <input type="file" accept="image/*" id="photo-input-gal" style="display:none">
+        </div>
         ${state.photos.slice().reverse().map(ph => `
           <div class="photo-card">
             <img src="${ph.dataUrl}" alt="">
@@ -1366,12 +1476,16 @@ views.progress = function () {
     state.measurements = state.measurements.filter(e => e.date !== today);
     state.measurements.push(m); saveState(); toast("Medidas guardadas"); views.progress();
   });
-  document.getElementById("photo-input").addEventListener("change", async e => {
-    const file = e.target.files[0]; if (!file) return;
+  const handlePhotoFile = async file => {
+    if (!file) return;
     const dataUrl = await compressImage(file, 800);
     state.photos.push({ id: uid(), date: todayISO(), dataUrl });
     saveState(); toast("Foto subida"); views.progress();
-  });
+  };
+  document.getElementById("photo-cam").addEventListener("click", () => document.getElementById("photo-input-cam").click());
+  document.getElementById("photo-gal").addEventListener("click", () => document.getElementById("photo-input-gal").click());
+  document.getElementById("photo-input-cam").addEventListener("change", e => handlePhotoFile(e.target.files[0]));
+  document.getElementById("photo-input-gal").addEventListener("change", e => handlePhotoFile(e.target.files[0]));
   document.querySelectorAll(".delete-photo").forEach(b => b.addEventListener("click", () => {
     if (!confirm("¿Eliminar esta foto?")) return;
     state.photos = state.photos.filter(p => p.id !== b.dataset.id);
@@ -1608,7 +1722,9 @@ views.profile = function () {
     });
     state.units = v("pf-units");
     state.setupComplete = true;
-    saveState(); toast("Perfil guardado"); views.profile();
+    saveState();
+    if (typeof cloudUpsertPerfil === "function") cloudUpsertPerfil(state.profile);
+    toast("Perfil guardado"); views.profile();
   });
   document.getElementById("export-data").addEventListener("click", () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
@@ -1692,7 +1808,10 @@ function renderOnboarding() {
     state.setupComplete = true;
     const today = todayISO();
     if (!state.weightLog.find(e => e.date === today)) state.weightLog.push({ date: today, weight: state.profile.weight });
-    saveState(); showView("dashboard");
+    saveState();
+    if (typeof cloudUpsertPerfil === "function") cloudUpsertPerfil(state.profile);
+    if (typeof cloudInsertRegistroPeso === "function") cloudInsertRegistroPeso({ fecha: today, peso: state.profile.weight });
+    showView("dashboard");
   });
 }
 
@@ -1834,7 +1953,10 @@ function updateThemeToggle() {
   else icon.innerHTML = `<circle cx="12" cy="12" r="4"/><path d="M12 2 v2 M12 20 v2 M2 12 h2 M20 12 h2 M4.93 4.93 l1.41 1.41 M17.66 17.66 l1.41 1.41 M4.93 19.07 l1.41 -1.41 M17.66 6.34 l1.41 -1.41"/>`;
 }
 
-function init() {
+let _appInitialized = false;
+function initFitcolApp() {
+  if (_appInitialized) return;
+  _appInitialized = true;
   document.documentElement.setAttribute("data-theme", state.theme || "dark");
   updateThemeToggle();
   document.getElementById("theme-toggle").addEventListener("click", () => {
@@ -1845,4 +1967,5 @@ function init() {
   document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => showView(b.dataset.view)));
   showView("dashboard");
 }
-document.addEventListener("DOMContentLoaded", init);
+// La inicialización la dispara auth.js (después de comprobar sesión)
+window.initFitcolApp = initFitcolApp;
