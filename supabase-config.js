@@ -6,8 +6,8 @@
 // =====================================================
 
 // TODO developer: poner aquí los valores de tu proyecto Supabase
-const SUPABASE_URL      = "REPLACE_SUPABASE_URL";       // ej: https://abcd1234.supabase.co
-const SUPABASE_ANON_KEY = "REPLACE_SUPABASE_ANON_KEY";  // anon public key
+const SUPABASE_URL      = "https://vooelhxkmidmbqsehmax.supabase.co";  // tu Project URL
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvb2VsaHhrbWlkbWJxc2VobWF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0NDgyMTEsImV4cCI6MjA5NDAyNDIxMX0.iYbvqGt_Ww3sLM_lMMrAS9dyYAPAeTSHutJUtRRGni8";  // anon public key
 
 const isConfigured =
   SUPABASE_URL.startsWith("https://") &&
