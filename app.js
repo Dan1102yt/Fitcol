@@ -280,7 +280,103 @@ function preferenceDescription(pref) {
     chatarra: "Comida procesada y muy calórica. Úsala con moderación; sirve para días de antojo o de surplus."
   })[pref] || "";
 }
-function sourceLabel(s) { return ({ plan: "del plan", custom: "personal", photo: "vía foto IA", manual: "manual" })[s] || s; }
+function sourceLabel(s) { return ({ plan: "del plan", custom: "personal", photo: "vía foto IA", manual: "manual", openfoodfacts: "Open Food Facts" })[s] || s; }
+
+function normText(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
+
+// Repositorio local de alimentos: base de datos colombiana (data.js) + comidas personales.
+// Deduplica por nombre. Cada item: { name, kcal, p, c, f, slot }
+function getFoodRepository() {
+  const out = [];
+  const seen = new Set();
+  const add = (f, slot) => {
+    const key = normText(f.name);
+    if (!f.name || seen.has(key)) return;
+    seen.add(key);
+    out.push({ name: f.name, kcal: f.kcal || 0, p: f.p || 0, c: f.c || 0, f: f.f || 0, slot: slot || f.slot || "snack" });
+  };
+  try {
+    Object.keys(FOODS || {}).forEach(slot => {
+      Object.keys(FOODS[slot] || {}).forEach(pref => {
+        (FOODS[slot][pref] || []).forEach(f => add(f, slot));
+      });
+    });
+  } catch {}
+  (state.customFoods || []).forEach(f => add(f, f.slot));
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function searchFoodRepository(query, limit) {
+  const q = normText(query).trim();
+  const repo = getFoodRepository();
+  if (!q) return repo.slice(0, limit || 12);
+  return repo.filter(f => normText(f.name).includes(q)).slice(0, limit || 12);
+}
+
+// Fila visual de una comida registrada (usada en pestaña Registro y bajo cada slot del Plan)
+function dietLogRowHtml(e, opts = {}) {
+  const meta = (opts.showSlot ? `${e.slot} · ` : "") + sourceLabel(e.source) + (e.porcion_gramos ? ` · ${e.porcion_gramos}g` : "");
+  return `
+    <div class="diet-log-row" data-row-id="${e.id}">
+      <div style="display:flex; gap:10px; align-items:center; min-width:0;">
+        ${e.photo ? `<img src="${e.photo}" alt="" style="width:46px;height:46px;border-radius:8px;object-fit:cover;flex-shrink:0;">` : ""}
+        <div style="min-width:0;">
+          <div style="font-weight:500; overflow-wrap:anywhere;">${escapeHtml(e.name)}</div>
+          <div class="card-meta">${escapeHtml(meta)}</div>
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; align-items:center; flex-shrink:0;">
+        <div class="ex-meta"><strong>${e.kcal}</strong> kcal · ${e.p}P / ${e.c}C / ${e.f}G</div>
+        <button class="btn btn-sm diet-edit" data-id="${e.id}" title="Editar">✎</button>
+        <button class="delete-btn diet-del" data-id="${e.id}" title="Eliminar">×</button>
+      </div>
+    </div>`;
+}
+
+function bindDietLogRowEvents(rootEl) {
+  (rootEl || document).querySelectorAll(".diet-edit").forEach(b => b.addEventListener("click", () => openEditLogger(b.dataset.id)));
+  (rootEl || document).querySelectorAll(".diet-del").forEach(b => b.addEventListener("click", () => {
+    state.dietLog = state.dietLog.filter(e => e.id !== b.dataset.id);
+    saveState(); views.diet();
+  }));
+}
+
+// Editar una comida ya registrada (estilo Fitia: ajustar nombre, slot y macros)
+function openEditLogger(entryId) {
+  const e = state.dietLog.find(x => x.id === entryId);
+  if (!e) { toast("No se encontró la comida"); return; }
+  const html = `
+    <h2>Editar comida</h2>
+    ${e.photo ? `<img src="${e.photo}" alt="" style="width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-bottom:14px;">` : ""}
+    <div class="field"><label>Nombre</label><input type="text" id="el-name" value="${escapeHtml(e.name)}"></div>
+    <div class="field"><label>Comida</label>
+      <select id="el-slot">
+        ${["desayuno","almuerzo","snack","cena"].map(s => `<option value="${s}" ${e.slot===s?"selected":""}>${capitalize(s)}</option>`).join("")}
+      </select>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Kcal</label><input type="number" id="el-kcal" value="${e.kcal}"></div>
+      <div class="field"><label>Prot (g)</label><input type="number" id="el-p" value="${e.p}"></div>
+      <div class="field"><label>Carb (g)</label><input type="number" id="el-c" value="${e.c}"></div>
+      <div class="field"><label>Grasa (g)</label><input type="number" id="el-f" value="${e.f}"></div>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-primary btn-block" id="el-save">Guardar cambios</button>
+      <button class="btn btn-block" id="el-cancel">Cancelar</button>
+    </div>
+  `;
+  const m = modal(html);
+  m.root.querySelector("#el-cancel").addEventListener("click", m.close);
+  m.root.querySelector("#el-save").addEventListener("click", () => {
+    const v = sel => m.root.querySelector(sel).value;
+    const name = v("#el-name").trim();
+    const kcal = parseInt(v("#el-kcal"));
+    if (!name || isNaN(kcal)) { toast("Faltan nombre o kcal"); return; }
+    e.name = name; e.slot = v("#el-slot");
+    e.kcal = kcal; e.p = parseInt(v("#el-p")) || 0; e.c = parseInt(v("#el-c")) || 0; e.f = parseInt(v("#el-f")) || 0;
+    saveState(); toast("Comida actualizada"); m.close(); views.diet();
+  });
+}
 
 async function compressImage(file, maxDim) {
   return new Promise(resolve => {
@@ -618,11 +714,13 @@ function renderDietPlanTab(p, n, meals) {
       const m = meals[slot];
       const adj = m.adjusted;
       const already = state.dietLog.find(e => e.date === todayISO() && e.slot === slot && e.name === m.name);
+      const logged = state.dietLog.filter(e => e.date === todayISO() && e.slot === slot);
+      const slotTot = logged.reduce((a, e) => ({ kcal: a.kcal + e.kcal, p: a.p + e.p, c: a.c + e.c, f: a.f + e.f }), { kcal: 0, p: 0, c: 0, f: 0 });
       return `
       <div class="card meal-card" style="margin-bottom: 18px;">
-        <div class="card-title">${capitalize(slot)} <span class="card-meta">${adj.kcal} kcal · porción ${m.multiplier}x</span></div>
+        <div class="card-title">${capitalize(slot)} <span class="card-meta">objetivo ~${adj.kcal} kcal${logged.length ? ` · llevas ${Math.round(slotTot.kcal)} kcal` : ""}</span></div>
         <div class="recipe-card open">
-          <div class="recipe-name">${escapeHtml(m.name)}</div>
+          <div class="recipe-name">${escapeHtml(m.name)} <span class="card-meta">(sugerencia · porción ${m.multiplier}x)</span></div>
           <div class="recipe-meta">
             <span><strong>${adj.kcal}</strong> kcal</span>
             <span><strong>${adj.p}</strong>g prot</span>
@@ -638,11 +736,16 @@ function renderDietPlanTab(p, n, meals) {
         </div>
         <div class="meal-actions">
           ${already
-            ? `<button class="btn btn-sm btn-success-soft" disabled>✓ Registrado</button>`
+            ? `<button class="btn btn-sm btn-success-soft" disabled>✓ Comí la sugerencia</button>`
             : `<button class="btn btn-sm btn-primary log-meal" data-slot="${slot}">Comí esto</button>`}
-          <button class="btn btn-sm log-photo" data-slot="${slot}">Subir foto del plato</button>
-          <button class="btn btn-sm log-manual" data-slot="${slot}">Registrar otra comida</button>
+          <button class="btn btn-sm log-photo" data-slot="${slot}">📷 Subir foto del plato</button>
+          <button class="btn btn-sm log-manual" data-slot="${slot}">+ Registrar comida</button>
         </div>
+        ${logged.length ? `
+        <div class="diet-log-list" style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px;">
+          <div class="card-meta" style="margin-bottom:8px;">Registrado en ${slot} hoy:</div>
+          ${logged.slice().reverse().map(e => dietLogRowHtml(e)).join("")}
+        </div>` : ""}
       </div>`;
     }).join("")}
   `;
@@ -658,6 +761,7 @@ function renderDietPlanTab(p, n, meals) {
   }));
   document.querySelectorAll(".log-photo").forEach(b => b.addEventListener("click", () => openPhotoLogger(b.dataset.slot)));
   document.querySelectorAll(".log-manual").forEach(b => b.addEventListener("click", () => openManualLogger(b.dataset.slot)));
+  bindDietLogRowEvents(document.getElementById("tab-content"));
 }
 
 function renderDietLogTab(n) {
@@ -685,18 +789,12 @@ function renderDietLogTab(n) {
     <div class="card">
       <div class="card-title">Comidas de hoy</div>
       ${todays.length === 0 ? `<div class="empty-state"><p>Aún no has registrado comidas.</p></div>` :
-        todays.slice().reverse().map(e => `
-          <div class="diet-log-row">
-            <div>
-              <div style="font-weight:500">${escapeHtml(e.name)}</div>
-              <div class="card-meta">${e.slot} · ${sourceLabel(e.source)} ${e.photo ? "· con foto" : ""}</div>
-            </div>
-            <div style="display:flex; gap:14px; align-items:center;">
-              <div class="ex-meta"><strong>${e.kcal}</strong> kcal · ${e.p}P / ${e.c}C / ${e.f}G</div>
-              <button class="delete-btn diet-del" data-id="${e.id}">×</button>
-            </div>
-          </div>
-        `).join("")
+        ["desayuno","almuerzo","snack","cena"].map(slot => {
+          const rows = todays.filter(e => e.slot === slot);
+          if (!rows.length) return "";
+          return `<div class="card-meta" style="margin:10px 0 6px;text-transform:uppercase;letter-spacing:.5px;">${slot}</div>` +
+            rows.slice().reverse().map(e => dietLogRowHtml(e)).join("");
+        }).join("")
       }
     </div>
   `;
@@ -704,10 +802,7 @@ function renderDietLogTab(n) {
   document.getElementById("add-from-custom").addEventListener("click", openCustomFoodPicker);
   document.getElementById("add-photo").addEventListener("click", () => openPhotoLogger("snack"));
   document.getElementById("add-manual").addEventListener("click", () => openManualLogger("snack"));
-  document.querySelectorAll(".diet-del").forEach(b => b.addEventListener("click", () => {
-    state.dietLog = state.dietLog.filter(e => e.id !== b.dataset.id);
-    saveState(); views.diet();
-  }));
+  bindDietLogRowEvents(tabEl);
 }
 
 function renderDietCustomTab() {
@@ -819,11 +914,16 @@ function openCustomFoodPicker() {
 
 function openManualLogger(slot) {
   const html = `
-    <h2>Registrar comida manual</h2>
-    <p>Indica los datos del plato que comiste.</p>
+    <h2>Registrar comida</h2>
+    <p>Escribe el nombre y elige de la lista (se autocompletan las calorías y macros), o ingresa los datos a mano.</p>
+    <div class="field">
+      <label>Buscar alimento</label>
+      <input type="text" id="ml-search" placeholder="Ej: arepa, pollo, sancocho, bandeja paisa…" autocomplete="off">
+    </div>
+    <div id="ml-results" style="max-height:200px; overflow-y:auto; margin:-4px 0 14px;"></div>
     <div class="field-row">
-      <div class="field"><label>Nombre</label><input type="text" id="ml-name"></div>
-      <div class="field"><label>Slot</label>
+      <div class="field" style="flex:2;"><label>Nombre</label><input type="text" id="ml-name"></div>
+      <div class="field"><label>Comida</label>
         <select id="ml-slot">
           <option value="desayuno" ${slot==="desayuno"?"selected":""}>Desayuno</option>
           <option value="almuerzo" ${slot==="almuerzo"?"selected":""}>Almuerzo</option>
@@ -833,6 +933,7 @@ function openManualLogger(slot) {
       </div>
     </div>
     <div class="field-row">
+      <div class="field"><label>Porción (x)</label><input type="number" id="ml-mult" value="1" step="0.25" min="0.25"></div>
       <div class="field"><label>Kcal</label><input type="number" id="ml-kcal"></div>
       <div class="field"><label>Prot (g)</label><input type="number" id="ml-p"></div>
       <div class="field"><label>Carb (g)</label><input type="number" id="ml-c"></div>
@@ -844,13 +945,48 @@ function openManualLogger(slot) {
     </div>
   `;
   const m = modal(html);
-  m.root.querySelector("#ml-cancel").addEventListener("click", m.close);
-  m.root.querySelector("#ml-save").addEventListener("click", () => {
-    const v = sel => m.root.querySelector(sel).value;
-    const name = v("#ml-name").trim();
-    const kcal = parseInt(v("#ml-kcal"));
-    if (!name || !kcal) { toast("Faltan nombre o kcal"); return; }
-    logMeal({ slot: v("#ml-slot"), name, kcal, p: parseInt(v("#ml-p")) || 0, c: parseInt(v("#ml-c")) || 0, f: parseInt(v("#ml-f")) || 0, source: "manual" });
+  const q = sel => m.root.querySelector(sel);
+  let base = null; // alimento elegido del repositorio: { kcal, p, c, f } por 1 porción
+
+  function renderResults(list) {
+    const box = q("#ml-results");
+    if (!list.length) { box.innerHTML = `<div class="card-meta" style="padding:8px 2px;">Sin resultados. Puedes registrarlo manualmente abajo.</div>`; return; }
+    box.innerHTML = list.map((f, i) => `
+      <div class="diet-log-row ml-pick" data-i="${i}" style="cursor:pointer;">
+        <div style="min-width:0;"><div style="font-weight:500;overflow-wrap:anywhere;">${escapeHtml(f.name)}</div><div class="card-meta">${capitalize(f.slot)}</div></div>
+        <div class="ex-meta"><strong>${f.kcal}</strong> kcal · ${f.p}P/${f.c}C/${f.f}G</div>
+      </div>`).join("");
+    box.querySelectorAll(".ml-pick").forEach(el => el.addEventListener("click", () => {
+      const f = list[parseInt(el.dataset.i)];
+      base = { kcal: f.kcal, p: f.p, c: f.c, f: f.f };
+      q("#ml-name").value = f.name;
+      if (f.slot) q("#ml-slot").value = f.slot;
+      q("#ml-mult").value = "1";
+      applyMult();
+      q("#ml-results").innerHTML = "";
+      q("#ml-search").value = "";
+    }));
+  }
+  function applyMult() {
+    if (!base) return;
+    const k = Math.max(0.25, parseFloat(q("#ml-mult").value) || 1);
+    q("#ml-kcal").value = Math.round(base.kcal * k);
+    q("#ml-p").value = Math.round(base.p * k);
+    q("#ml-c").value = Math.round(base.c * k);
+    q("#ml-f").value = Math.round(base.f * k);
+  }
+  renderResults(searchFoodRepository("", 12));
+  q("#ml-search").addEventListener("input", () => renderResults(searchFoodRepository(q("#ml-search").value, 12)));
+  q("#ml-mult").addEventListener("input", applyMult);
+  // si el usuario edita los macros a mano, dejamos de escalar desde 'base'
+  ["#ml-kcal","#ml-p","#ml-c","#ml-f"].forEach(sel => q(sel).addEventListener("input", () => { base = null; }));
+
+  q("#ml-cancel").addEventListener("click", m.close);
+  q("#ml-save").addEventListener("click", () => {
+    const name = q("#ml-name").value.trim();
+    const kcal = parseInt(q("#ml-kcal").value);
+    if (!name || isNaN(kcal)) { toast("Faltan nombre o kcal"); return; }
+    logMeal({ slot: q("#ml-slot").value, name, kcal, p: parseInt(q("#ml-p").value) || 0, c: parseInt(q("#ml-c").value) || 0, f: parseInt(q("#ml-f").value) || 0, source: "manual" });
     toast("Comida registrada"); m.close(); views.diet();
   });
 }

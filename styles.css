@@ -1238,11 +1238,20 @@ a { color: var(--accent); text-decoration: none; }
   width: 100%;
   border-collapse: collapse;
 }
-.chart-container { position: relative; width: 100%; max-width: 100%; overflow: hidden; }
-.chart-container canvas { max-width: 100% !important; height: auto !important; }
+.chart-container { position: relative; width: 100%; max-width: 100%; height: 280px; overflow: hidden; }
+.chart-container canvas { display: block; max-width: 100% !important; }
+
+/* Evita scroll horizontal / necesidad de zoom-out en móvil */
+html, body { max-width: 100%; overflow-x: hidden; }
+.app { max-width: 100%; }
+.content { min-width: 0; }
+img, canvas, video, svg { max-width: 100%; }
+.recipe-name, .diet-log-row, .card-title, .exercise-log-block, .workout-day-header h3 { overflow-wrap: anywhere; word-break: break-word; }
+.nav-item, .bottom-nav button, .tab, .pill, .btn { touch-action: manipulation; }
 
 @media (max-width: 480px) {
   .content { padding: 14px 10px 90px; }
+  .chart-container { height: 220px; }
   .view-header h1 { font-size: 20px; }
   .view-header p { font-size: 13px; }
   .grid-2, .grid-3, .grid-4 { display: flex; flex-direction: column; gap: 12px; }
