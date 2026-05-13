@@ -68,6 +68,9 @@ function saveState() {
 }
 function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
 function todayISO() { return new Date().toISOString().slice(0, 10); }
+// Fecha actualmente seleccionada en la vista Dieta (no se persiste: cada recarga vuelve a hoy)
+let _dietDate = "";
+function diaSel() { if (!_dietDate) _dietDate = todayISO(); return _dietDate; }
 
 function toast(msg, ms = 2200) {
   const el = document.getElementById("toast");
@@ -170,7 +173,7 @@ function dailyTotals(dateISO) {
 }
 
 function logMeal(entry) {
-  const full = { id: uid(), date: todayISO(), source: "plan", ...entry };
+  const full = { id: uid(), date: diaSel(), source: "plan", ...entry };
   state.dietLog.push(full);
   saveState();
   if (typeof cloudInsertComida === "function") cloudInsertComida(full);
@@ -658,7 +661,9 @@ views.diet = function () {
   const n = calcNutrition(p);
   ensureDailyMenu();
   const meals = state.dailyMenu.meals;
-  const tot = dailyTotals();
+  const dia = diaSel();
+  const esHoy = dia === todayISO();
+  const tot = dailyTotals(dia);
   const tab = state._dietTab || "plan";
 
   document.getElementById("content").innerHTML = `
@@ -670,6 +675,12 @@ views.diet = function () {
       <button class="btn" id="regen-menu">Generar otro menú</button>
     </div>
 
+    <div class="card" style="margin-bottom: 16px; display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
+      <div class="field" style="margin:0;"><label>Día</label><input type="date" id="diet-date" value="${dia}"></div>
+      ${!esHoy ? `<button class="btn btn-sm" id="diet-today">Ir a hoy</button>` : ""}
+      <span class="card-meta" style="padding-bottom:10px;">${esHoy ? "Estás viendo hoy" : "Viendo " + formatDate(dia)}</span>
+    </div>
+
     <div class="grid-4" style="margin-bottom: 18px;">
       <div class="stat-card"><div class="label">Calorías</div><div class="value">${Math.round(tot.kcal)}<span class="unit">/${n.kcal}</span></div></div>
       <div class="stat-card"><div class="label">Proteína</div><div class="value">${Math.round(tot.p)}<span class="unit">/${n.protein}g</span></div></div>
@@ -679,7 +690,7 @@ views.diet = function () {
 
     <div class="tabbar">
       <button class="tab ${tab === "plan" ? "active" : ""}" data-tab="plan">Plan del día</button>
-      <button class="tab ${tab === "log" ? "active" : ""}" data-tab="log">Registro de hoy</button>
+      <button class="tab ${tab === "log" ? "active" : ""}" data-tab="log">${esHoy ? "Registro de hoy" : "Registro del día"}</button>
       <button class="tab ${tab === "custom" ? "active" : ""}" data-tab="custom">Mis comidas</button>
     </div>
     <div id="tab-content"></div>
@@ -690,6 +701,11 @@ views.diet = function () {
   document.getElementById("regen-menu").addEventListener("click", () => {
     ensureDailyMenu(true); views.diet(); toast("Nuevo menú generado");
   });
+  document.getElementById("diet-date").addEventListener("change", e => {
+    _dietDate = e.target.value || todayISO(); views.diet();
+  });
+  const dietTodayBtn = document.getElementById("diet-today");
+  if (dietTodayBtn) dietTodayBtn.addEventListener("click", () => { _dietDate = todayISO(); views.diet(); });
 
   if (tab === "plan") renderDietPlanTab(p, n, meals);
   else if (tab === "log") renderDietLogTab(n);
@@ -713,12 +729,24 @@ function renderDietPlanTab(p, n, meals) {
     ${["desayuno","almuerzo","snack","cena"].map(slot => {
       const m = meals[slot];
       const adj = m.adjusted;
-      const already = state.dietLog.find(e => e.date === todayISO() && e.slot === slot && e.name === m.name);
-      const logged = state.dietLog.filter(e => e.date === todayISO() && e.slot === slot);
+      const dia = diaSel();
+      const already = state.dietLog.find(e => e.date === dia && e.slot === slot && e.name === m.name);
+      const logged = state.dietLog.filter(e => e.date === dia && e.slot === slot);
       const slotTot = logged.reduce((a, e) => ({ kcal: a.kcal + e.kcal, p: a.p + e.p, c: a.c + e.c, f: a.f + e.f }), { kcal: 0, p: 0, c: 0, f: 0 });
-      return `
-      <div class="card meal-card" style="margin-bottom: 18px;">
-        <div class="card-title">${capitalize(slot)} <span class="card-meta">objetivo ~${adj.kcal} kcal${logged.length ? ` · llevas ${Math.round(slotTot.kcal)} kcal` : ""}</span></div>
+      // Si el usuario subió una foto para este slot, la foto + lo que detectó la IA reemplaza al menú recomendado
+      const photoEntry = logged.slice().reverse().find(e => e.source === "photo" && e.photo);
+      const dishBlock = photoEntry ? `
+        <div class="recipe-card open">
+          <img src="${photoEntry.photo}" alt="" style="width:100%; max-height:240px; object-fit:cover; border-radius:10px; margin-bottom:10px;">
+          <div class="recipe-name">${escapeHtml(photoEntry.name)} <span class="card-meta">(tu foto · analizado por IA)</span></div>
+          <div class="recipe-meta">
+            <span><strong>${photoEntry.kcal}</strong> kcal</span>
+            <span><strong>${photoEntry.p}</strong>g prot</span>
+            <span><strong>${photoEntry.c}</strong>g carb</span>
+            <span><strong>${photoEntry.f}</strong>g grasa</span>
+          </div>
+          ${photoEntry.descripcion ? `<div class="recipe-detail"><h4>Lo que detectó la IA</h4><p style="color:var(--text-muted)">${escapeHtml(photoEntry.descripcion)}</p></div>` : ""}
+        </div>` : `
         <div class="recipe-card open">
           <div class="recipe-name">${escapeHtml(m.name)} <span class="card-meta">(sugerencia · porción ${m.multiplier}x)</span></div>
           <div class="recipe-meta">
@@ -733,7 +761,11 @@ function renderDietPlanTab(p, n, meals) {
             <h4>Preparación</h4>
             <p style="color:var(--text-muted)">${escapeHtml(m.preparacion)}</p>
           </div>
-        </div>
+        </div>`;
+      return `
+      <div class="card meal-card" style="margin-bottom: 18px;">
+        <div class="card-title">${capitalize(slot)} <span class="card-meta">objetivo ~${adj.kcal} kcal${logged.length ? ` · llevas ${Math.round(slotTot.kcal)} kcal` : ""}</span></div>
+        ${dishBlock}
         <div class="meal-actions">
           ${already
             ? `<button class="btn btn-sm btn-success-soft" disabled>✓ Comí la sugerencia</button>`
@@ -743,7 +775,7 @@ function renderDietPlanTab(p, n, meals) {
         </div>
         ${logged.length ? `
         <div class="diet-log-list" style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px;">
-          <div class="card-meta" style="margin-bottom:8px;">Registrado en ${slot} hoy:</div>
+          <div class="card-meta" style="margin-bottom:8px;">Registrado en ${slot}:</div>
           ${logged.slice().reverse().map(e => dietLogRowHtml(e)).join("")}
         </div>` : ""}
       </div>`;
@@ -765,13 +797,13 @@ function renderDietPlanTab(p, n, meals) {
 }
 
 function renderDietLogTab(n) {
-  const today = todayISO();
+  const today = diaSel();
   const todays = state.dietLog.filter(e => e.date === today);
-  const tot = dailyTotals();
+  const tot = dailyTotals(today);
   const tabEl = document.getElementById("tab-content");
   tabEl.innerHTML = `
     <div class="card" style="margin-bottom: 18px;">
-      <div class="card-title">Hoy ${formatDate(today)}</div>
+      <div class="card-title">${today === todayISO() ? "Hoy " : ""}${formatDate(today)}</div>
       ${macroBar("Calorías", "kcal", tot.kcal, n.kcal, " kcal")}
       ${macroBar("Proteína", "protein", tot.p, n.protein, "g")}
       ${macroBar("Carbos", "carbs", tot.c, n.carbs, "g")}
@@ -996,10 +1028,17 @@ function openPhotoLogger(slot) {
   const html = `
     <h2>Foto del plato</h2>
     <p>Subiré la foto a la IA y estimaré las calorías y macros automáticamente.</p>
+    <div class="field"><label>Comida</label>
+      <select id="ph-slot">
+        <option value="desayuno" ${slot==="desayuno"?"selected":""}>Desayuno</option>
+        <option value="almuerzo" ${slot==="almuerzo"?"selected":""}>Almuerzo</option>
+        <option value="snack" ${slot==="snack"||!slot?"selected":""}>Snack</option>
+        <option value="cena" ${slot==="cena"?"selected":""}>Cena</option>
+      </select>
+    </div>
     ${photoPickerHtml("ph-foto")}
     <div id="ph-result" style="display:none; margin-top:14px;"></div>
     <button class="btn btn-block" id="ph-cancel" style="margin-top:14px;">Cancelar</button>
-    <input type="hidden" id="ph-slot" value="${slot}">
   `;
   const m = modal(html);
   m.root.querySelector("#ph-cancel").addEventListener("click", m.close);
@@ -1022,11 +1061,12 @@ function openPhotoLogger(slot) {
             <span><strong>${r.f}</strong>g grasa</span>
           </div>
         </div>
+        <p style="color:var(--text-dim); font-size:12px; margin-top:8px;">Después de registrarla podrás ajustar los valores tocando ✎ en la lista.</p>
         <button class="btn btn-primary btn-block" id="ph-confirm" style="margin-top:12px;">Registrar esta comida</button>
       `;
       m.root.querySelector("#ph-confirm").addEventListener("click", () => {
         const s = m.root.querySelector("#ph-slot").value;
-        logMeal({ slot: s, name: r.nombre, kcal: r.kcal, p: r.p, c: r.c, f: r.f, source: "photo", photo: currentDataUrl });
+        logMeal({ slot: s, name: r.nombre, descripcion: r.descripcion || "", kcal: r.kcal, p: r.p, c: r.c, f: r.f, source: "photo", photo: currentDataUrl });
         toast("Comida registrada por IA");
         m.close(); views.diet();
       });
