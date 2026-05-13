@@ -221,6 +221,7 @@ a { color: var(--accent); text-decoration: none; }
   flex-direction: column;
   gap: 6px;
   margin-bottom: 14px;
+  min-width: 0;
 }
 .field label {
   font-size: 12px;
@@ -240,6 +241,8 @@ a { color: var(--accent); text-decoration: none; }
   font-size: 14px;
   outline: none;
   transition: var(--transition);
+  width: 100%;
+  min-width: 0;
 }
 .field input:focus,
 .field select:focus,
@@ -814,8 +817,8 @@ a { color: var(--accent); text-decoration: none; }
 }
 .set-table-head, .set-row {
   display: grid;
-  grid-template-columns: 40px 1fr 80px 44px;
-  gap: 10px;
+  grid-template-columns: 34px minmax(0, 2fr) minmax(0, 1.1fr) 38px;
+  gap: 8px;
   align-items: center;
 }
 .set-table-head {
@@ -844,29 +847,34 @@ a { color: var(--accent); text-decoration: none; }
 .set-weight {
   display: flex;
   gap: 4px;
+  min-width: 0;
 }
 .set-weight .weight-input {
-  flex: 1;
-  min-width: 60px;
+  flex: 1 1 0;
+  min-width: 0;
 }
 .set-weight .unit-select {
-  width: 60px;
-  padding: 7px 6px;
+  flex: 0 0 46px;
+  width: 46px;
+  padding: 7px 4px;
   font-size: 12px;
+  text-align: center;
 }
 .set-row input,
 .set-row select {
   background: var(--bg-elev-2);
   border: 1px solid var(--border);
   color: var(--text);
-  padding: 7px 9px;
+  padding: 7px 8px;
   border-radius: 6px;
   font-size: 13px;
   outline: none;
+  min-width: 0;
+  width: 100%;
 }
 .set-row input:focus,
 .set-row select:focus { border-color: var(--accent); }
-.set-row .reps-input { width: 100%; }
+.set-row .reps-input { width: 100%; text-align: center; }
 .set-check {
   width: 36px;
   height: 36px;
@@ -970,11 +978,17 @@ a { color: var(--accent); text-decoration: none; }
 
 @media (max-width: 900px) {
   .chat-card { height: calc(100vh - 220px); }
-  .set-table-head, .set-row { grid-template-columns: 32px 1fr 70px 40px; gap: 6px; }
-  .set-weight .unit-select { width: 50px; padding: 7px 4px; }
+  .set-table-head, .set-row { grid-template-columns: 30px minmax(0, 2fr) minmax(0, 1.1fr) 36px; gap: 6px; }
+  .set-weight .unit-select { flex-basis: 42px; width: 42px; padding: 7px 2px; }
+  .set-check { width: 34px; height: 34px; }
 }
 @media (max-width: 480px) {
-  .set-table-head, .set-row { grid-template-columns: 30px 1fr 64px 38px; gap: 4px; font-size: 12px; }
+  .set-table-head, .set-row { grid-template-columns: 26px minmax(0, 2fr) minmax(0, 1.05fr) 32px; gap: 5px; font-size: 12px; }
+  .set-table-head { font-size: 10px; padding: 0 2px; }
+  .set-weight { gap: 3px; }
+  .set-weight .unit-select { flex-basis: 38px; width: 38px; }
+  .set-row input, .set-row select { padding: 6px 4px; font-size: 12px; }
+  .set-check { width: 30px; height: 30px; font-size: 14px; }
   .meal-actions .btn { font-size: 11px; padding: 6px 10px; }
 }
 

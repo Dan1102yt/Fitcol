@@ -401,14 +401,18 @@ async function compressImage(file, maxDim) {
   });
 }
 
+// Modales apilables: cada modal() añade su propio overlay (no reemplaza los anteriores),
+// para que un modal pueda abrir otro encima sin destruirlo (p.ej. editor de rutina -> elegir ejercicio).
+// m.root es el overlay propio del modal; querySelector(...) sobre él alcanza su contenido.
 function modal(html) {
   const root = document.getElementById("modal-root");
-  root.innerHTML = `<div class="modal-overlay"><div class="modal">${html}</div></div>`;
-  const close = () => { root.innerHTML = ""; };
-  root.querySelector(".modal-overlay").addEventListener("click", e => {
-    if (e.target.classList.contains("modal-overlay")) close();
-  });
-  return { close, root };
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `<div class="modal">${html}</div>`;
+  root.appendChild(overlay);
+  const close = () => { overlay.remove(); };
+  overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
+  return { close, root: overlay };
 }
 
 // =====================================================
@@ -676,8 +680,8 @@ views.diet = function () {
     </div>
 
     <div class="card" style="margin-bottom: 16px; display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
-      <div class="field" style="margin:0;"><label>Día</label><input type="date" id="diet-date" value="${dia}"></div>
-      ${!esHoy ? `<button class="btn btn-sm" id="diet-today">Ir a hoy</button>` : ""}
+      <div class="field" style="margin:0; flex:1 1 150px;"><label>Día</label><input type="date" id="diet-date" value="${dia}"></div>
+      ${!esHoy ? `<button class="btn btn-sm" id="diet-today" style="flex:0 0 auto;">Ir a hoy</button>` : ""}
       <span class="card-meta" style="padding-bottom:10px;">${esHoy ? "Estás viendo hoy" : "Viendo " + formatDate(dia)}</span>
     </div>
 
@@ -1571,10 +1575,10 @@ views.progress = function () {
     <div class="grid-2" style="margin-bottom: 18px;">
       <div class="card">
         <div class="card-title">Peso semanal</div>
-        <div style="display:flex; gap:10px; align-items:end; margin-bottom: 16px;">
-          <div class="field" style="flex:1; margin:0;"><label>Fecha</label><input type="date" id="weight-date" value="${todayISO()}"></div>
-          <div class="field" style="flex:1; margin:0;"><label>Peso (kg)</label><input type="number" id="weight-input" step="0.1" placeholder="${state.profile.weight}"></div>
-          <button class="btn btn-primary" id="add-weight">Agregar</button>
+        <div style="display:flex; gap:10px; align-items:end; margin-bottom: 16px; flex-wrap:wrap;">
+          <div class="field" style="flex:1 1 130px; margin:0;"><label>Fecha</label><input type="date" id="weight-date" value="${todayISO()}"></div>
+          <div class="field" style="flex:1 1 110px; margin:0;"><label>Peso (kg)</label><input type="number" id="weight-input" step="0.1" placeholder="${state.profile.weight}"></div>
+          <button class="btn btn-primary" id="add-weight" style="flex:0 0 auto;">Agregar</button>
         </div>
         <div class="chart-container" style="margin-bottom: 14px;"><canvas id="chart-weight-progress"></canvas></div>
         <div class="weight-entry-list">
