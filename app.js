@@ -177,6 +177,7 @@ function logMeal(entry) {
   state.dietLog.push(full);
   saveState();
   if (typeof cloudInsertComida === "function") cloudInsertComida(full);
+  if (typeof gamiOnActivity === "function") gamiOnActivity("meal");
 }
 
 // =====================================================
@@ -1176,6 +1177,7 @@ function renderActiveDay(r, dayIdx) {
     }
     state.workouts.push({ id: uid(), date: today, dayIndex: dayIdx, sessionLabel: day.label });
     saveState(); toast("¡Sesión completada!"); views.workout();
+    if (typeof gamiOnActivity === "function") gamiOnActivity("workout");
   });
   document.getElementById("add-extra-ex").addEventListener("click", () => openExtraExercisePicker(sessionId));
 }
@@ -1245,6 +1247,7 @@ function attachSetRowListeners(row) {
     state.units = u; saveState();
     row.classList.add("done"); check.classList.add("done");
     toast("Set guardado");
+    if (typeof gamiOnActivity === "function") gamiOnActivity("workout");
   });
   ["weight-input", "reps-input", "unit-select"].forEach(cls => {
     const el = row.querySelector("." + cls);
@@ -1641,6 +1644,7 @@ views.progress = function () {
     state.weightLog = state.weightLog.filter(e => e.date !== date);
     state.weightLog.push({ date, weight });
     state.profile.weight = weight; saveState(); toast("Registro agregado"); views.progress();
+    if (typeof gamiOnWeightSave === "function") gamiOnWeightSave();
   });
   document.querySelectorAll(".weight-del").forEach(b => b.addEventListener("click", () => {
     state.weightLog = state.weightLog.filter(e => e.date !== b.dataset.date);
@@ -2137,6 +2141,7 @@ let _appInitialized = false;
 function initFitcolApp() {
   if (_appInitialized) return;
   _appInitialized = true;
+  if (typeof gamiInit === "function") gamiInit();
   document.documentElement.setAttribute("data-theme", state.theme || "dark");
   updateThemeToggle();
   document.getElementById("theme-toggle").addEventListener("click", () => {
