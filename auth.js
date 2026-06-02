@@ -4,7 +4,7 @@
 
 window.currentUser = null;
 
-function renderLoginScreen(error) {
+function renderLoginScreen(message, type = "error") {
   const root = document.getElementById("auth-root");
   if (!root) return;
   root.style.display = "flex";
@@ -12,8 +12,8 @@ function renderLoginScreen(error) {
 
   root.innerHTML = `
     <div class="auth-card">
-      <div class="auth-logo">Fitcol</div>
-      <p class="auth-tag">Tu objetivo, tu plan.</p>
+      <div class="auth-logo"><span class="logo-fit">FIT</span><span class="logo-col">COL</span></div>
+      <p class="auth-tag">Vuela más alto cada día.</p>
 
       ${!window.supabaseConfigured ? `
         <div class="auth-banner">
@@ -36,7 +36,10 @@ function renderLoginScreen(error) {
           <input type="email" id="auth-email" placeholder="tu@email.com" required>
           <label>Contraseña</label>
           <input type="password" id="auth-password" placeholder="Mínimo 6 caracteres" required minlength="6">
-          ${error ? `<div class="auth-error">${error}</div>` : ""}
+          <div id="auth-forgot-wrap" style="text-align:right;margin-top:6px;">
+            <a href="#" id="auth-forgot" style="font-size:12px;color:var(--accent);">¿Olvidaste tu contraseña?</a>
+          </div>
+          ${message ? `<div class="auth-${type}">${message}</div>` : ""}
           <button type="submit" class="btn-primary btn-block" id="auth-submit">Iniciar sesión</button>
         </form>
 
@@ -59,6 +62,32 @@ function renderLoginScreen(error) {
     document.getElementById("auth-submit").textContent = mode === "signup" ? "Crear cuenta" : "Iniciar sesión";
     document.getElementById("auth-mode-label").textContent = mode === "signup" ? "¿Ya tienes cuenta?" : "¿No tienes cuenta?";
     document.getElementById("auth-toggle").textContent = mode === "signup" ? "Iniciar sesión" : "Crear cuenta";
+    const fw = document.getElementById("auth-forgot-wrap");
+    if (fw) fw.style.display = mode === "signup" ? "none" : "block";
+  });
+
+  document.getElementById("auth-forgot").addEventListener("click", async e => {
+    e.preventDefault();
+    if (mode !== "signin") return;
+    const email = document.getElementById("auth-email").value.trim();
+    if (!email) {
+      renderLoginScreen("Escribe tu email primero para recuperar la contraseña.");
+      return;
+    }
+    const link = document.getElementById("auth-forgot");
+    if (link) { link.textContent = "Enviando…"; link.style.pointerEvents = "none"; }
+    try {
+      const { error: resetErr } = await window.supabaseClient.auth.resetPasswordForEmail(email, {
+        redirectTo: "https://dan1102yt.github.io/Fitcol/"
+      });
+      if (resetErr) {
+        renderLoginScreen(resetErr.message);
+      } else {
+        renderLoginScreen("Te enviamos un link al correo 🦅", "success");
+      }
+    } catch (err) {
+      renderLoginScreen(err.message || "Error al enviar el correo.");
+    }
   });
 
   document.getElementById("auth-google").addEventListener("click", async () => {

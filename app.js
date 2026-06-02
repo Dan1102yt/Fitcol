@@ -437,7 +437,7 @@ views.dashboard = function () {
   document.getElementById("content").innerHTML = `
     <div class="view-header">
       <div>
-        <h1>${greeting}, ${escapeHtml(name)}</h1>
+        <h1>¡Buenas, ${escapeHtml(name)}! El cóndor no descansa.</h1>
         <p>Objetivo: <strong>${goalLabel}</strong> · ${p.weeks} semanas · ${p.trainingDays} días/semana</p>
       </div>
       <button class="btn btn-primary" id="quick-log-weight">+ Registrar peso</button>
@@ -498,7 +498,7 @@ views.dashboard = function () {
         ${exerciseNames.length ?
           `<div class="chart-container"><canvas id="chart-exercise"></canvas></div>
            <div id="ex-summary" style="margin-top:12px;"></div>` :
-          `<div class="empty-state"><p>Aún no registras series. Marca tus sets en Entrenamiento y aquí verás tu progreso.</p></div>`
+          `<div class="empty-state"><p>El cóndor no nació volando — marca tus sets en Entrenamiento y aquí verás tu progreso.</p></div>`
         }
       </div>
     </div>
@@ -506,7 +506,7 @@ views.dashboard = function () {
     <div class="card">
       <div class="card-title">Comidas registradas hoy <span class="card-meta">${tot.count} entradas</span></div>
       ${state.dietLog.filter(e => e.date === todayISO()).length === 0 ? `
-        <div class="empty-state"><p>Aún no registras comidas hoy. Ve a Dieta para añadir tu desayuno, almuerzo, snack o cena.</p></div>
+        <div class="empty-state"><p>Sin combustible no hay vuelo. Ve a Dieta para añadir tu desayuno, almuerzo, snack o cena.</p></div>
       ` : `
         <div class="diet-log-list">
           ${state.dietLog.filter(e => e.date === todayISO()).slice().reverse().map(e => `
@@ -825,7 +825,7 @@ function renderDietLogTab(n) {
     </div>
     <div class="card">
       <div class="card-title">Comidas de hoy</div>
-      ${todays.length === 0 ? `<div class="empty-state"><p>Aún no has registrado comidas.</p></div>` :
+      ${todays.length === 0 ? `<div class="empty-state"><p>Sin combustible no hay vuelo. Registra tu primera comida.</p></div>` :
         ["desayuno","almuerzo","snack","cena"].map(slot => {
           const rows = todays.filter(e => e.slot === slot);
           if (!rows.length) return "";
@@ -1382,7 +1382,7 @@ function renderWorkoutCustom() {
         <button class="btn" id="import-excel">Importar historial Excel</button>
       </div>
       ${state.customRoutines.length === 0 ?
-        `<div class="empty-state"><p>Aún no tienes rutinas personales. Crea una nueva.</p></div>` :
+        `<div class="empty-state"><p>El cóndor no nació volando — crea tu primera rutina personalizada.</p></div>` :
         state.customRoutines.map(cr => `
           <div class="custom-routine-row ${state.useCustomRoutine && state.activeCustomRoutineId === cr.id ? "active" : ""}">
             <div>
