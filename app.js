@@ -740,9 +740,12 @@ function renderDietPlanTab(p, n, meals) {
       const already = state.dietLog.find(e => e.date === dia && e.slot === slot && e.name === m.name);
       const logged = state.dietLog.filter(e => e.date === dia && e.slot === slot);
       const slotTot = logged.reduce((a, e) => ({ kcal: a.kcal + e.kcal, p: a.p + e.p, c: a.c + e.c, f: a.f + e.f }), { kcal: 0, p: 0, c: 0, f: 0 });
-      // Si el usuario subió una foto para este slot, la foto + lo que detectó la IA reemplaza al menú recomendado
       const photoEntry = logged.slice().reverse().find(e => e.source === "photo" && e.photo);
-      const dishBlock = photoEntry ? `
+      const nonPhotoLogged = logged.filter(e => !(e.source === "photo" && e.photo));
+
+      let mainBlock, extraBlock = "";
+      if (photoEntry) {
+        mainBlock = `
         <div class="recipe-card open">
           <img src="${photoEntry.photo}" alt="" style="width:100%; max-height:240px; object-fit:cover; border-radius:10px; margin-bottom:10px;">
           <div class="recipe-name">${escapeHtml(photoEntry.name)} <span class="card-meta">(tu foto · analizado por IA)</span></div>
@@ -753,7 +756,22 @@ function renderDietPlanTab(p, n, meals) {
             <span><strong>${photoEntry.f}</strong>g grasa</span>
           </div>
           ${photoEntry.descripcion ? `<div class="recipe-detail"><h4>Lo que detectó la IA</h4><p style="color:var(--text-muted)">${escapeHtml(photoEntry.descripcion)}</p></div>` : ""}
-        </div>` : `
+        </div>`;
+        if (nonPhotoLogged.length) extraBlock = `
+        <div class="diet-log-list" style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px;">
+          <div class="card-meta" style="margin-bottom:6px;">También en ${slot}:</div>
+          ${nonPhotoLogged.slice().reverse().map(e => dietLogRowHtml(e)).join("")}
+        </div>`;
+      } else if (logged.length > 0) {
+        mainBlock = `
+        <div class="diet-log-list" style="margin-bottom:4px;">
+          ${logged.slice().reverse().map(e => dietLogRowHtml(e)).join("")}
+        </div>
+        <div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--border); font-size:12px; color:var(--text-dim);">
+          ≈ Plan sugerido: <em>${escapeHtml(m.name)}</em> &nbsp;·&nbsp; ${adj.kcal} kcal · porción ${m.multiplier}x
+        </div>`;
+      } else {
+        mainBlock = `
         <div class="recipe-card open">
           <div class="recipe-name">${escapeHtml(m.name)} <span class="card-meta">(sugerencia · porción ${m.multiplier}x)</span></div>
           <div class="recipe-meta">
@@ -769,10 +787,12 @@ function renderDietPlanTab(p, n, meals) {
             <p style="color:var(--text-muted)">${escapeHtml(m.preparacion)}</p>
           </div>
         </div>`;
+      }
       return `
       <div class="card meal-card" style="margin-bottom: 18px;">
         <div class="card-title">${capitalize(slot)} <span class="card-meta">objetivo ~${adj.kcal} kcal${logged.length ? ` · llevas ${Math.round(slotTot.kcal)} kcal` : ""}</span></div>
-        ${dishBlock}
+        ${mainBlock}
+        ${extraBlock}
         <div class="meal-actions">
           ${already
             ? `<button class="btn btn-sm btn-success-soft" disabled>✓ Comí la sugerencia</button>`
@@ -780,11 +800,6 @@ function renderDietPlanTab(p, n, meals) {
           <button class="btn btn-sm log-photo" data-slot="${slot}">📷 Subir foto del plato</button>
           <button class="btn btn-sm log-manual" data-slot="${slot}">+ Registrar comida</button>
         </div>
-        ${logged.length ? `
-        <div class="diet-log-list" style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px;">
-          <div class="card-meta" style="margin-bottom:8px;">Registrado en ${slot}:</div>
-          ${logged.slice().reverse().map(e => dietLogRowHtml(e)).join("")}
-        </div>` : ""}
       </div>`;
     }).join("")}
   `;
