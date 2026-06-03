@@ -286,7 +286,7 @@ function preferenceDescription(pref) {
     chatarra: "Comida procesada y muy calórica. Úsala con moderación; sirve para días de antojo o de surplus."
   })[pref] || "";
 }
-function sourceLabel(s) { return ({ plan: "del plan", custom: "personal", photo: "vía foto IA", manual: "manual", openfoodfacts: "Open Food Facts" })[s] || s; }
+function sourceLabel(s) { return ({ plan: "del plan", custom: "personal", photo: "vía foto IA", manual: "manual", openfoodfacts: "Open Food Facts" })[s] || ""; }
 
 function normText(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
 
@@ -321,7 +321,9 @@ function searchFoodRepository(query, limit) {
 
 // Fila visual de una comida registrada (usada en pestaña Registro y bajo cada slot del Plan)
 function dietLogRowHtml(e, opts = {}) {
-  const meta = (opts.showSlot ? `${e.slot} · ` : "") + sourceLabel(e.source) + (e.porcion_gramos ? ` · ${e.porcion_gramos}g` : "");
+  const _sl = sourceLabel(e.source);
+  const _metaParts = [...(opts.showSlot ? [e.slot] : []), ...(_sl ? [_sl] : []), ...(e.porcion_gramos ? [`${e.porcion_gramos}g`] : [])];
+  const meta = _metaParts.join(" · ");
   return `
     <div class="diet-log-row" data-row-id="${e.id}">
       <div style="display:flex; gap:10px; align-items:center; min-width:0;">
@@ -515,7 +517,7 @@ views.dashboard = function () {
             <div class="diet-log-row">
               <div>
                 <div style="font-weight:500">${escapeHtml(e.name)}</div>
-                <div class="card-meta">${e.slot} · ${sourceLabel(e.source)}</div>
+                <div class="card-meta">${e.slot}${sourceLabel(e.source) ? ` · ${sourceLabel(e.source)}` : ''}</div>
               </div>
               <div class="ex-meta"><strong>${e.kcal}</strong> kcal · ${e.p}P / ${e.c}C / ${e.f}G</div>
             </div>

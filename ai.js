@@ -129,6 +129,21 @@ async function sendChatMessage(userText, onChunk) {
 // -----------------------------------------------------
 // Análisis de foto de comida
 // -----------------------------------------------------
+function compressImage(dataUrl, maxWidth = 800, quality = 0.8) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ratio = Math.min(1, maxWidth / img.width);
+      canvas.width = img.width * ratio;
+      canvas.height = img.height * ratio;
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.src = dataUrl;
+  });
+}
+
 async function analyzeFoodPhoto(dataUrl) {
   const message = `Analiza esta foto de comida (preferiblemente colombiana) y estima sus macros con la mayor precisión posible.
 
@@ -146,7 +161,8 @@ Si la foto SÍ contiene comida, devuelve EXCLUSIVAMENTE un JSON con esta forma e
 
 Sé realista; estima porciones con referencias típicas (arepa media ~70g, taza de arroz cocido ~150g, presa de pollo ~120g, huevo ~50g, cucharada de aceite ~14g).`;
 
-  const text = await callWorker({ message, image: dataUrl });
+  const compressed = await compressImage(dataUrl);
+  const text = await callWorker({ message, image: compressed });
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("La IA no devolvió un JSON parseable.");
   const json = JSON.parse(match[0]);
