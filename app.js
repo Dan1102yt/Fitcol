@@ -989,7 +989,15 @@ function openManualLogger(slot) {
       <label>Buscar alimento</label>
       <input type="text" id="ml-search" placeholder="Ej: arepa, pollo, sancocho, bandeja paisa…" autocomplete="off">
     </div>
-    <div id="ml-results" style="max-height:200px; overflow-y:auto; margin:-4px 0 14px;"></div>
+    <div id="ml-results" style="max-height:200px; overflow-y:auto; margin:-4px 0 10px;"></div>
+    <div style="margin-bottom:14px; padding:12px; background:var(--bg-elev-2); border:1px solid var(--border); border-radius:8px;">
+      <div style="font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.4px; margin-bottom:8px;">O describe tu comida libremente</div>
+      <textarea id="ml-ai-text" rows="2" placeholder='Ej: "comí un plato de arroz con pollo y ensalada, más una gaseosa"' style="width:100%; background:var(--bg-elev); border:1px solid var(--border); color:var(--text); padding:9px 11px; border-radius:6px; font-size:13px; resize:none; outline:none; font-family:inherit; margin-bottom:8px;"></textarea>
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-sm" id="ml-ai-btn">Analizar con IA</button>
+        <span id="ml-ai-status" style="font-size:12px; color:var(--text-muted);"></span>
+      </div>
+    </div>
     <div class="field-row">
       <div class="field" style="flex:2;"><label>Nombre</label><input type="text" id="ml-name"></div>
       <div class="field"><label>Comida</label>
@@ -1046,6 +1054,36 @@ function openManualLogger(slot) {
   }
   renderResults(searchFoodRepository("", 12));
   q("#ml-search").addEventListener("input", () => renderResults(searchFoodRepository(q("#ml-search").value, 12)));
+  q("#ml-ai-btn").addEventListener("click", async () => {
+    const text = q("#ml-ai-text").value.trim();
+    if (!text) { toast("Describe la comida primero"); return; }
+    const statusEl = q("#ml-ai-status");
+    const btn = q("#ml-ai-btn");
+    statusEl.textContent = "Analizando tu comida...";
+    statusEl.style.color = "var(--text-muted)";
+    btn.disabled = true;
+    try {
+      const prompt = `Eres un nutricionista experto en comida colombiana. El usuario describe lo que comió: "${text.replace(/"/g, "'")}". Responde SOLO con JSON válido, sin texto adicional, sin markdown:\n{"nombre":"nombre descriptivo","calorias":numero,"proteina":numero,"carbos":numero,"grasa":numero,"porcion":"descripcion de la porcion estimada"}`;
+      const result = await callWorker({ message: prompt });
+      const match = result.match(/\{[\s\S]*?\}/);
+      if (!match) throw new Error("JSON inválido");
+      const data = JSON.parse(match[0]);
+      if (!data.nombre || typeof data.calorias !== "number") throw new Error("Datos incompletos");
+      q("#ml-name").value = data.nombre;
+      q("#ml-kcal").value = data.calorias;
+      q("#ml-p").value = data.proteina || 0;
+      q("#ml-c").value = data.carbos || 0;
+      q("#ml-f").value = data.grasa || 0;
+      base = null;
+      statusEl.textContent = `✓ Estimado por IA${data.porcion ? " · " + data.porcion : ""} — puedes ajustar`;
+      statusEl.style.color = "var(--success)";
+    } catch {
+      statusEl.textContent = "No pude analizar eso. Intenta ser más específico o usa el buscador.";
+      statusEl.style.color = "var(--danger)";
+    } finally {
+      btn.disabled = false;
+    }
+  });
   q("#ml-mult").addEventListener("input", applyMult);
   // si el usuario edita los macros a mano, dejamos de escalar desde 'base'
   ["#ml-kcal","#ml-p","#ml-c","#ml-f"].forEach(sel => q(sel).addEventListener("input", () => { base = null; }));
