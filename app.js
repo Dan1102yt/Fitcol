@@ -67,7 +67,7 @@ function saveState() {
   catch { toast("No se pudo guardar (storage lleno)"); }
 }
 function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
-function todayISO() { return new Date().toISOString().slice(0, 10); }
+function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 // Fecha actualmente seleccionada en la vista Dieta (no se persiste: cada recarga vuelve a hoy)
 let _dietDate = "";
 function diaSel() { if (!_dietDate) _dietDate = todayISO(); return _dietDate; }
@@ -247,6 +247,8 @@ function pickN(pool, n, used, dayIdx, groupKey) {
 const views = {};
 function showView(name) {
   currentView = name;
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  document.getElementById("modal-root").innerHTML = "";
   Object.values(charts).forEach(c => { try { c.destroy(); } catch {} });
   charts = {};
   document.querySelectorAll(".nav-item, .bottom-nav button").forEach(b => {
@@ -266,8 +268,8 @@ function startOfWeek(d) {
   date.setDate(date.getDate() + (day === 0 ? -6 : 1 - day));
   return date;
 }
-function formatDate(iso) { return new Date(iso).toLocaleDateString("es-CO", { day: "numeric", month: "long", year: "numeric" }); }
-function formatDateShort(iso) { return new Date(iso).toLocaleDateString("es-CO", { day: "numeric", month: "short" }); }
+function formatDate(iso) { const [y,m,d]=iso.split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"}); }
+function formatDateShort(iso) { const [y,m,d]=iso.split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString("es-CO",{day:"numeric",month:"short"}); }
 function greetingByHour() { const h = new Date().getHours(); return h < 12 ? "Buenos días" : h < 19 ? "Buenas tardes" : "Buenas noches"; }
 function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : ""; }
 function escapeHtml(s) {
@@ -426,7 +428,7 @@ views.dashboard = function () {
   const currentWeight = log.length ? log[log.length - 1].weight : p.weight;
   const remaining = p.targetWeight - currentWeight;
   const weekStart = startOfWeek(new Date());
-  const sessionsThisWeek = state.workouts.filter(w => new Date(w.date) >= weekStart).length;
+  const sessionsThisWeek = state.workouts.filter(w => { const [y,m,d]=w.date.split('-').map(Number); return new Date(y,m-1,d) >= weekStart; }).length;
   const tot = dailyTotals();
   const goalLabel = { bajar: "Perder peso", subir: "Ganar peso", mantener: "Mantener peso" }[p.goal];
   const greeting = greetingByHour();
@@ -1131,7 +1133,7 @@ function renderWorkoutToday(r) {
     tabEl.innerHTML = `<div class="rest-day"><h3 style="color:var(--text)">Sin entrenamientos programados</h3><p>Tu objetivo se alcanzará con dieta. Si quieres entrenar, configura los días en la pestaña Configuración.</p></div>`;
     return;
   }
-  const week = state.workouts.filter(w => new Date(w.date) >= startOfWeek(new Date()));
+  const week = state.workouts.filter(w => { const [y,m,d]=w.date.split('-').map(Number); return new Date(y,m-1,d) >= startOfWeek(new Date()); });
   const todayIdx = week.length % r.days.length;
   state._wActiveDay = state._wActiveDay ?? todayIdx;
 
@@ -1897,10 +1899,22 @@ views.profile = function () {
   }));
   document.getElementById("save-profile").addEventListener("click", () => {
     const v = id => document.getElementById(id).value;
+    const newWeight = parseFloat(v("pf-weight")) || 70;
+    const newTarget = parseFloat(v("pf-target")) || 70;
+    const goal = state.profile.goal;
+    if (goal === "bajar" && newTarget >= newWeight) {
+      toast("Para bajar de peso, el peso meta debe ser menor al peso actual"); return;
+    }
+    if (goal === "subir" && newTarget <= newWeight) {
+      toast("Para subir de peso, el peso meta debe ser mayor al peso actual"); return;
+    }
+    if (goal === "mantener" && Math.abs(newTarget - newWeight) > 2) {
+      toast("Para mantener el peso, la meta debe estar a máximo ±2 kg del peso actual"); return;
+    }
     Object.assign(state.profile, {
       name: v("pf-name"), age: parseInt(v("pf-age")) || 25, sex: v("pf-sex"),
-      height: parseFloat(v("pf-height")) || 170, weight: parseFloat(v("pf-weight")) || 70,
-      activity: v("pf-activity"), targetWeight: parseFloat(v("pf-target")) || 70,
+      height: parseFloat(v("pf-height")) || 170, weight: newWeight,
+      activity: v("pf-activity"), targetWeight: newTarget,
       weeks: parseInt(v("pf-weeks")) || 12, trainingDays: Math.max(0, Math.min(7, parseInt(v("pf-tdays")) || 0)),
       trainingGoal: v("pf-tgoal"), distribution: v("pf-dist")
     });
@@ -2150,6 +2164,16 @@ function initFitcolApp() {
     updateThemeToggle(); saveState(); showView(currentView);
   });
   document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => showView(b.dataset.view)));
+  if (window.visualViewport) {
+    const nav = document.querySelector('.bottom-nav');
+    const adjustNav = () => {
+      if (!nav) return;
+      const offset = window.innerHeight - window.visualViewport.offsetTop - window.visualViewport.height;
+      nav.style.bottom = offset > 10 ? `${offset}px` : '';
+    };
+    window.visualViewport.addEventListener('resize', adjustNav);
+    window.visualViewport.addEventListener('scroll', adjustNav);
+  }
   showView("dashboard");
 }
 // La inicialización la dispara auth.js (después de comprobar sesión)

@@ -63,8 +63,8 @@ function gamiStreakMsg(streak) {
   return "¡Comienza hoy!";
 }
 
-function gamiTodayISO() { return new Date().toISOString().slice(0, 10); }
-function gamiYesterdayISO() { return new Date(Date.now() - 86400000).toISOString().slice(0, 10); }
+function gamiTodayISO() { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function gamiYesterdayISO() { const d=new Date(); d.setDate(d.getDate()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 
 function gamiCheckReset(g) {
   const today = gamiTodayISO();
