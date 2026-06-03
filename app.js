@@ -544,6 +544,21 @@ function macroBar(label, key, current, total, unit = "%") {
   </div>`;
 }
 
+function dietMacroBar(label, current, total, unit, color) {
+  const cur = Math.round(current);
+  const pct = total > 0 ? Math.min(100, Math.round((cur / total) * 100)) : 0;
+  const over = total > 0 && cur > total;
+  return `<div class="macro-bar-wrap">
+    <div class="macro-bar-header">
+      <span>${label}</span>
+      <span style="color:${over ? "#C0392B" : "var(--text-muted)"}">${cur.toLocaleString("es-CO")} / ${total.toLocaleString("es-CO")} ${unit} · ${pct}%</span>
+    </div>
+    <div class="macro-bar-track">
+      <div class="macro-bar-fill" style="width:${pct}%; background:${over ? "#C0392B" : color};"></div>
+    </div>
+  </div>`;
+}
+
 function quickLogWeight() { openWeightModal(); }
 
 // Modal completo: peso obligatorio + medidas opcionales + foto opcional
@@ -688,11 +703,11 @@ views.diet = function () {
       <span class="card-meta" style="padding-bottom:10px;">${esHoy ? "Estás viendo hoy" : "Viendo " + formatDate(dia)}</span>
     </div>
 
-    <div class="grid-4" style="margin-bottom: 18px;">
-      <div class="stat-card"><div class="label">Calorías</div><div class="value">${Math.round(tot.kcal)}<span class="unit">/${n.kcal}</span></div></div>
-      <div class="stat-card"><div class="label">Proteína</div><div class="value">${Math.round(tot.p)}<span class="unit">/${n.protein}g</span></div></div>
-      <div class="stat-card"><div class="label">Carbos</div><div class="value">${Math.round(tot.c)}<span class="unit">/${n.carbs}g</span></div></div>
-      <div class="stat-card"><div class="label">Grasas</div><div class="value">${Math.round(tot.f)}<span class="unit">/${n.fat}g</span></div></div>
+    <div class="card" style="margin-bottom: 18px; padding: 18px 22px;">
+      ${dietMacroBar("Calorías", tot.kcal, n.kcal, "kcal", "#D4A017")}
+      ${dietMacroBar("Proteína", tot.p, n.protein, "g", "#1B4F8A")}
+      ${dietMacroBar("Carbos", tot.c, n.carbs, "g", "#2E9E4F")}
+      ${dietMacroBar("Grasa", tot.f, n.fat, "g", "#C0392B")}
     </div>
 
     <div class="tabbar">
