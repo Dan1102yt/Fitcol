@@ -667,7 +667,12 @@ function bindPhotoPicker(root, idBase, onPick) {
     onPick(null);
   });
   const handle = async (e) => {
-    const file = e.target.files[0]; if (!file) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!(file instanceof Blob)) {
+      toast("No se pudo leer la foto. Intenta de nuevo.");
+      return;
+    }
     const dataUrl = await compressImage(file, 1024);
     img.src = dataUrl;
     preview.style.display = "flex";
@@ -1734,6 +1739,10 @@ views.progress = function () {
   });
   const handlePhotoFile = async file => {
     if (!file) return;
+    if (!(file instanceof Blob)) {
+      toast("No se pudo leer la foto. Intenta de nuevo.");
+      return;
+    }
     const dataUrl = await compressImage(file, 800);
     state.photos.push({ id: uid(), date: todayISO(), dataUrl });
     saveState(); toast("Foto subida"); views.progress();
