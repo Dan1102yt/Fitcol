@@ -92,6 +92,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17 L9 11 L13 15 L21 7 M21 7 H15 M21 7 V13"/></svg>
       Progreso
     </button>
+    <button data-view="profile">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21 a8 8 0 0 1 16 0"/></svg>
+      Perfil
+    </button>
     <button data-view="achievements">
       <span class="bottom-streak-icon">🦅</span>
       <span id="streak-count-mobile">0</span>
@@ -112,9 +116,25 @@
   <script src="install-prompt.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
+      // Antes la app nunca revisaba si había una versión nueva ni se actualizaba sola —
+      // por eso un cambio publicado podía tardar mucho en verse en un celular con la PWA
+      // instalada. Ahora: revisa activamente al volver a primer plano, y cuando un Service
+      // Worker nuevo toma control, recarga sola para mostrar la versión actualizada.
+      let swRefreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (swRefreshing) return;
+        swRefreshing = true;
+        if (typeof toast === 'function') toast('Actualizando a la última versión…', 1200);
+        setTimeout(() => window.location.reload(), 700);
+      });
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js')
-          .then(reg => console.log('SW registrado:', reg.scope))
+          .then(reg => {
+            console.log('SW registrado:', reg.scope);
+            document.addEventListener('visibilitychange', () => {
+              if (document.visibilityState === 'visible') reg.update().catch(() => {});
+            });
+          })
           .catch(err => console.error('SW error:', err));
       });
     }
