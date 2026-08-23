@@ -45,6 +45,15 @@ const defaultState = {
 let state = loadState();
 let charts = {};
 let currentView = "dashboard";
+// Referencia a la función que reposiciona el bottom-nav cuando cambia el
+// visualViewport (teclado abierto/cerrado, barra de direcciones de Android
+// que aparece/desaparece al hacer scroll). Se asigna en initFitcolApp().
+// Se expone aquí para poder forzar un recálculo al cambiar de vista — antes
+// solo se recalculaba cuando el visualViewport emitía su propio evento, así
+// que si quedabas con un offset aplicado (p.ej. saliste de un campo de texto
+// con teclado abierto) y navegabas a otra sección, el nav podía quedar
+// visualmente desplazado del área que en verdad recibe el tap.
+let _adjustBottomNav = null;
 
 function loadState() {
   try {
@@ -300,9 +309,24 @@ function showView(name) {
   document.querySelectorAll(".nav-item, .bottom-nav button").forEach(b => {
     b.classList.toggle("active", b.dataset.view === name);
   });
-  if (!state.setupComplete && name !== "profile") return renderOnboarding();
-  (views[name] || views.dashboard)();
+  // El bottom-nav se reposiciona con el teclado/la barra de direcciones del
+  // navegador (ver initFitcolApp). Si quedó desplazado desde la vista
+  // anterior, este es el momento de recalcularlo — evita que el botón se
+  // vea en un lugar pero el área que responde al toque quede desfasada.
+  if (typeof _adjustBottomNav === "function") _adjustBottomNav();
+  try {
+    if (!state.setupComplete && name !== "profile") return renderOnboarding();
+    (views[name] || views.dashboard)();
+  } catch (err) {
+    // Antes, si algo fallaba a mitad de un render, la vista quedaba a medio
+    // pintar y no pasaba nada visible — se sentía como que el botón "no
+    // respondía". Ahora se ve un aviso y queda registrado en consola, y el
+    // usuario puede reintentar sin quedar atascado.
+    console.error(`Error al mostrar la vista "${name}":`, err);
+    toast("Algo falló al cargar esta sección. Intenta de nuevo.");
+  }
   window.scrollTo(0, 0);
+  if (typeof _adjustBottomNav === "function") _adjustBottomNav();
 }
 
 // =====================================================
@@ -1414,10 +1438,15 @@ function attachSetRowListeners(row) {
       const item = state.setLog.find(s => s.id === id);
       if (item) { item.weight = w; item.reps = r; item.unit = u; }
     } else {
-      const item = { id: uid(), date: todayISO(), sessionId: row.dataset.session, exerciseName: row.dataset.exname, group: row.dataset.group, weight: w, reps: r, unit: u };
+      const item = { id: uid(), date: todayISO(), sessionId: row.dataset.session, exerciseName: row.dataset.exname, group: row.dataset.group, weight: w, reps: r, unit: u, synced: false };
       state.setLog.push(item);
       row.dataset.id = item.id;
-      if (typeof cloudInsertSet === "function") cloudInsertSet(item);
+      // "synced" queda en false hasta que el insert a Supabase confirme —
+      // así cloudHydrate() sabe que este set todavía no debe pisarse si la
+      // app se cierra antes de que la petición termine (ver cloud-sync.js).
+      if (typeof cloudInsertSet === "function") {
+        Promise.resolve(cloudInsertSet(item)).then(ok => { if (ok) { item.synced = true; saveState(); } });
+      }
     }
     state.units = u; saveState();
     row.classList.add("done"); check.classList.add("done");
@@ -2417,6 +2446,7 @@ function initFitcolApp() {
       const offset = window.innerHeight - window.visualViewport.offsetTop - window.visualViewport.height;
       nav.style.bottom = offset > 10 ? `${offset}px` : '';
     };
+    _adjustBottomNav = adjustNav;
     window.visualViewport.addEventListener('resize', adjustNav);
     window.visualViewport.addEventListener('scroll', adjustNav);
   }

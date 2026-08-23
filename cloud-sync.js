@@ -39,8 +39,11 @@ async function cloudLoadPerfil() {
 }
 
 // ---------- REGISTROS_PESO ----------
+// Devuelve true/false para que quien llama sepa si de verdad llegó a la nube
+// (antes no devolvía nada: un fallo de red quedaba invisible y luego
+// cloudHydrate() podía perder el dato igual, ver más abajo).
 async function cloudInsertRegistroPeso(record) {
-  if (!cloudAvailable()) return;
+  if (!cloudAvailable()) return false;
   try {
     const { error } = await window.supabaseClient.from("registros_peso").upsert({
       user_id: window.currentUser.id,
@@ -53,8 +56,9 @@ async function cloudInsertRegistroPeso(record) {
       bicep: record.bicep ?? null,
       foto_url: record.foto_url ?? null
     }, { onConflict: "user_id,fecha" });
-    if (error) console.warn("cloudInsertRegistroPeso:", error.message);
-  } catch (e) { console.warn(e); }
+    if (error) { console.warn("cloudInsertRegistroPeso:", error.message); return false; }
+    return true;
+  } catch (e) { console.warn(e); return false; }
 }
 
 async function cloudLoadRegistrosPeso() {
@@ -76,8 +80,10 @@ async function cloudDeleteRegistroPeso(fecha) {
 }
 
 // ---------- ENTRENAMIENTOS (1 fila por set) ----------
+// Devuelve true/false — igual que arriba, para que quien llama pueda marcar
+// el set como "sincronizado" solo si de verdad llegó a Supabase.
 async function cloudInsertSet(set) {
-  if (!cloudAvailable()) return;
+  if (!cloudAvailable()) return false;
   const peso_kg = set.unit === "lb" ? lbToKg(set.weight) : set.weight;
   try {
     const { error } = await window.supabaseClient.from("entrenamientos").insert({
@@ -89,8 +95,9 @@ async function cloudInsertSet(set) {
       peso_kg,
       notas: set.unit === "lb" ? `Ingresado en lb: ${set.weight}` : null
     });
-    if (error) console.warn("cloudInsertSet:", error.message);
-  } catch (e) { console.warn(e); }
+    if (error) { console.warn("cloudInsertSet:", error.message); return false; }
+    return true;
+  } catch (e) { console.warn(e); return false; }
 }
 
 async function cloudLoadEntrenamientos() {
@@ -195,7 +202,25 @@ async function cloudDeleteAllUserData() {
 }
 
 // ---------- HYDRATE ----------
-// Sustituye el estado local por lo que tiene la nube al iniciar sesión.
+// Se llama CADA VEZ que se abre la app con sesión activa (no solo la primera
+// vez que inicias sesión) — ver auth.js. Antes esto REEMPLAZABA por completo
+// weightLog/measurements/setLog/dietLog con lo que hubiera en la nube.
+//
+// El bug real: registrar un set o una comida guarda local al instante, pero
+// el insert a Supabase (cloudInsertSet / cloudInsertComida) se dispara sin
+// esperar a que termine. Si cierras la pestaña o la app pasa a segundo plano
+// justo después (muy común en celular: el navegador puede cortar la
+// petición en curso), ese insert nunca llega a completarse — pero
+// localStorage sí quedó con el dato. La próxima vez que abrías la app, esta
+// función bajaba de la nube (que nunca recibió ese set/comida) y lo pisaba
+// por completo, borrando justo lo que acababas de registrar. Por fuera se
+// veía como "no se guarda lo que lleno", y coincide con que solo pasaba al
+// cerrar y reabrir — nunca mientras la pestaña seguía abierta.
+//
+// Fix: en vez de reemplazar, MEZCLA. Todo lo que ya está confirmado en la
+// nube se toma de ahí (fuente de verdad para lo sincronizado); lo que sigue
+// local y sin confirmar (sin cloudId / sin flag "synced") se conserva y
+// además se reintenta subir en este mismo hydrate.
 async function cloudHydrate() {
   if (!cloudAvailable() || typeof state === "undefined") return;
   try {
@@ -213,50 +238,73 @@ async function cloudHydrate() {
       state.setupComplete = true;
     }
 
-    if (pesos.length) {
-      state.weightLog = pesos
-        .filter(r => r.peso != null)
-        .map(r => ({ date: r.fecha, weight: Number(r.peso) }));
-      const measRows = pesos.filter(r => r.pecho || r.cintura || r.cadera || r.bicep || r.porcentaje_grasa);
-      state.measurements = measRows.map(r => ({
-        date: r.fecha,
-        chest: r.pecho ? Number(r.pecho) : undefined,
-        waist: r.cintura ? Number(r.cintura) : undefined,
-        hips: r.cadera ? Number(r.cadera) : undefined,
-        leftArm: r.bicep ? Number(r.bicep) : undefined,
-        bodyFat: r.porcentaje_grasa ? Number(r.porcentaje_grasa) : undefined
-      }));
+    // --- Peso y medidas: clave natural = fecha (la tabla ya hace upsert por fecha) ---
+    const cloudDates = new Set(pesos.map(r => r.fecha));
+    const localOnlyWeights = (state.weightLog || []).filter(w => !cloudDates.has(w.date));
+    const cloudWeightLog = pesos
+      .filter(r => r.peso != null)
+      .map(r => ({ date: r.fecha, weight: Number(r.peso) }));
+    state.weightLog = cloudWeightLog.concat(localOnlyWeights)
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+    const measRows = pesos.filter(r => r.pecho || r.cintura || r.cadera || r.bicep || r.porcentaje_grasa);
+    const localOnlyMeasurements = (state.measurements || []).filter(m => !cloudDates.has(m.date));
+    const cloudMeasurements = measRows.map(r => ({
+      date: r.fecha,
+      chest: r.pecho ? Number(r.pecho) : undefined,
+      waist: r.cintura ? Number(r.cintura) : undefined,
+      hips: r.cadera ? Number(r.cadera) : undefined,
+      leftArm: r.bicep ? Number(r.bicep) : undefined,
+      bodyFat: r.porcentaje_grasa ? Number(r.porcentaje_grasa) : undefined
+    }));
+    state.measurements = cloudMeasurements.concat(localOnlyMeasurements);
+
+    // Reintenta subir lo que quedó solo local antes de perderlo de vista.
+    for (const w of localOnlyWeights) {
+      const ok = await cloudInsertRegistroPeso({ fecha: w.date, peso: w.weight });
+      if (ok) cloudDates.add(w.date); // ya no hace falta seguir tratándolo como "solo local"
     }
 
-    if (entrenos.length) {
-      state.setLog = entrenos.map(e => ({
-        id: e.id, date: e.fecha,
-        sessionId: `${e.fecha}-cloud`,
-        exerciseName: e.ejercicio,
-        group: "",
-        weight: Number(e.peso_kg) || 0,
-        unit: "kg",
-        reps: e.repeticiones || 0
-      }));
+    // --- Entrenamientos: los sets locales llevan flag synced (true tras cloudInsertSet ok) ---
+    const cloudSetLog = entrenos.map(e => ({
+      id: e.id, date: e.fecha,
+      sessionId: `${e.fecha}-cloud`,
+      exerciseName: e.ejercicio,
+      group: "",
+      weight: Number(e.peso_kg) || 0,
+      unit: "kg",
+      reps: e.repeticiones || 0,
+      synced: true
+    }));
+    const pendingSets = (state.setLog || []).filter(s => !s.synced);
+    for (const s of pendingSets) {
+      const ok = await cloudInsertSet(s);
+      if (ok) s.synced = true;
     }
+    state.setLog = cloudSetLog.concat(pendingSets);
 
-    if (comidas.length) {
-      const slotMatch = (nombre) => {
-        const m = nombre.match(/^\[(desayuno|almuerzo|snack|cena)\]\s*(.*)$/i);
-        return m ? { slot: m[1].toLowerCase(), name: m[2] } : { slot: "snack", name: nombre };
+    // --- Comidas: las locales llevan cloudId una vez confirmadas (ver logMeal en app.js) ---
+    const slotMatch = (nombre) => {
+      const m = nombre.match(/^\[(desayuno|almuerzo|snack|cena)\]\s*(.*)$/i);
+      return m ? { slot: m[1].toLowerCase(), name: m[2] } : { slot: "snack", name: nombre };
+    };
+    const cloudDietLog = comidas.map(c => {
+      const { slot, name } = slotMatch(c.nombre);
+      return {
+        id: c.id, cloudId: c.id, date: c.fecha, slot, name,
+        kcal: Number(c.calorias) || 0,
+        p: Number(c.proteina) || 0,
+        c: Number(c.carbohidratos) || 0,
+        f: Number(c.grasas) || 0,
+        source: "cloud"
       };
-      state.dietLog = comidas.map(c => {
-        const { slot, name } = slotMatch(c.nombre);
-        return {
-          id: c.id, date: c.fecha, slot, name,
-          kcal: Number(c.calorias) || 0,
-          p: Number(c.proteina) || 0,
-          c: Number(c.carbohidratos) || 0,
-          f: Number(c.grasas) || 0,
-          source: "cloud"
-        };
-      });
+    });
+    const pendingMeals = (state.dietLog || []).filter(e => !e.cloudId);
+    for (const meal of pendingMeals) {
+      const cloudId = await cloudInsertComida(meal);
+      if (cloudId) meal.cloudId = cloudId;
     }
+    state.dietLog = cloudDietLog.concat(pendingMeals);
 
     saveState();
     if (typeof showView === "function" && typeof currentView !== "undefined") showView(currentView);
