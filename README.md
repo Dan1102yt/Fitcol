@@ -32,11 +32,10 @@ Funciona offline en PC y móvil — un solo `index.html`, sin build step. Los da
 - Subida de fotos comprimidas (almacenadas localmente).
 
 ### Asistente IA
-- Chat tipo WhatsApp contra Claude (Anthropic).
-- Tiene contexto completo de tus datos: objetivo, peso, sesiones, sets registrados por ejercicio, dieta de los últimos días.
+- Chat tipo WhatsApp contra Claude (Anthropic), a través de un proxy propio (Cloudflare Worker) que oculta la API key — no necesitas configurar nada de tu parte.
+- Tiene contexto completo de tus datos: objetivo, peso, sesiones, sets registrados por ejercicio, dieta de los últimos días, y tus lesiones/restricciones si las configuraste en Perfil.
 - Responde preguntas tipo *"¿cómo voy en press banca?"* con números reales o sobre alimentación general.
-- API key del usuario (gratis en `console.anthropic.com`), guardada solo en el navegador.
-- Análisis de fotos de comida con vision (`claude-sonnet-4-6`) — usa prompt caching.
+- Análisis de fotos de comida con vision — pasa por el mismo Worker.
 
 ### Generales
 - Tema claro/oscuro con toggle.
@@ -47,31 +46,36 @@ Funciona offline en PC y móvil — un solo `index.html`, sin build step. Los da
 
 Abre `index.html` directamente en el navegador. No necesita servidor.
 
-## API key (opcional, para IA)
+## Cuentas y auth
 
-Las funciones de chat y análisis de foto requieren una API key de Anthropic:
-
-1. Crea una cuenta en https://console.anthropic.com/
-2. Genera una API key (`sk-ant-...`)
-3. En la app: ve a **Perfil → Asistente IA · API key** y pégala
-4. Listo
-
-La key se guarda únicamente en `localStorage` de tu navegador. Las llamadas a la API se hacen directo desde el browser usando el header `anthropic-dangerous-direct-browser-access`.
+La app funciona sin cuenta (todo en `localStorage`) si Supabase no está configurado. Con Supabase configurado (ver `SETUP.md`), pide login (Google o email/password) y sincroniza perfil, pesos, entrenamientos y comidas en la nube — así puedes entrar desde el celular y el computador y ver lo mismo.
 
 ## Stack
 
-- HTML + CSS + JavaScript vanilla (sin frameworks)
-- [Chart.js](https://www.chartjs.org/) por CDN para las gráficas
-- API de Anthropic (Claude) para chat y análisis de fotos
+- HTML + CSS + JavaScript vanilla (sin frameworks, sin build step)
+- [Chart.js](https://www.chartjs.org/) y [SheetJS](https://sheetjs.com/) por CDN
+- Supabase (auth + base de datos con Row Level Security)
+- Cloudflare Worker como proxy seguro a la API de Anthropic (Claude) — la API key nunca toca el navegador
+- Service Worker + manifest para funcionar como PWA instalable, con modo offline básico
 
 ## Estructura
 
 ```
 Fitcol/
-├── index.html      # Estructura principal + nav
-├── styles.css      # Tema oscuro/claro, responsive
-├── data.js         # Base de comidas colombianas + ejercicios + plantillas
-├── ai.js           # Wrapper de Claude API + prompt de chat
-├── app.js          # Estado, cálculos, todas las vistas
+├── index.html          # Estructura principal + nav
+├── styles.css          # Tema oscuro/claro, responsive
+├── manifest.json        # Metadata PWA
+├── sw.js                # Service Worker (cache/offline)
+├── install-prompt.js    # Banner de "instalar como app"
+├── data.js               # Base de comidas colombianas + ejercicios + plantillas
+├── ai.js                 # Cliente del Worker (chat + análisis de fotos)
+├── app.js                # Estado, cálculos, todas las vistas
+├── auth.js               # Login/registro + sesión Supabase
+├── cloud-sync.js          # Sincronización con las 4 tablas de Supabase
+├── food-search.js         # Buscador Open Food Facts
+├── excel-importer.js      # Importador de historial de entrenamientos
+├── gamification.js        # Racha, niveles y logros
+├── supabase-config.js     # Credenciales e inicialización de Supabase
+├── SETUP.md               # Guía de configuración (Supabase, Worker, hosting)
 └── README.md
 ```

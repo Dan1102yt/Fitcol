@@ -120,10 +120,10 @@ function openFoodSearch(slot) {
           source: "openfoodfacts",
           porcion_gramos: grams
         };
+        // logMeal ya se encarga de sincronizar con Supabase (incluida la fecha del día
+        // seleccionado en Dieta). Llamar a cloudInsertComida otra vez aquí duplicaba la
+        // fila en la nube — y con la fecha de hoy en vez de la fecha seleccionada.
         logMeal(entry);
-        if (typeof cloudInsertComida === "function") {
-          await cloudInsertComida({ date: todayISO(), ...entry });
-        }
         toast(`Agregado: ${name} - ${mm.kcal} kcal`);
         m.close();
         if (typeof views !== "undefined" && views.diet) views.diet();

@@ -114,12 +114,14 @@ async function cloudBulkInsertEntrenamientos(rows) {
 }
 
 // ---------- COMIDAS ----------
+// Devuelve el id (UUID) de la fila creada en Supabase — distinto del id local que genera
+// uid() — para que quien llama pueda guardarlo y luego editar/borrar esa fila puntual.
 async function cloudInsertComida(comida) {
-  if (!cloudAvailable()) return;
+  if (!cloudAvailable()) return null;
   // Prefijamos slot al nombre para preservarlo (la tabla no tiene slot)
   const nombre = comida.slot ? `[${comida.slot}] ${comida.name}` : comida.name;
   try {
-    const { error } = await window.supabaseClient.from("comidas").insert({
+    const { data, error } = await window.supabaseClient.from("comidas").insert({
       user_id: window.currentUser.id,
       fecha: comida.date,
       nombre,
@@ -128,8 +130,35 @@ async function cloudInsertComida(comida) {
       carbohidratos: comida.c,
       grasas: comida.f,
       porcion_gramos: comida.porcion_gramos ?? null
-    });
-    if (error) console.warn("cloudInsertComida:", error.message);
+    }).select("id").single();
+    if (error) { console.warn("cloudInsertComida:", error.message); return null; }
+    return data ? data.id : null;
+  } catch (e) { console.warn(e); return null; }
+}
+
+async function cloudUpdateComida(id, comida) {
+  if (!cloudAvailable() || !id) return;
+  const nombre = comida.slot ? `[${comida.slot}] ${comida.name}` : comida.name;
+  try {
+    const { error } = await window.supabaseClient.from("comidas").update({
+      fecha: comida.date,
+      nombre,
+      calorias: comida.kcal,
+      proteina: comida.p,
+      carbohidratos: comida.c,
+      grasas: comida.f,
+      porcion_gramos: comida.porcion_gramos ?? null
+    }).eq("id", id).eq("user_id", window.currentUser.id);
+    if (error) console.warn("cloudUpdateComida:", error.message);
+  } catch (e) { console.warn(e); }
+}
+
+async function cloudDeleteComida(id) {
+  if (!cloudAvailable() || !id) return;
+  try {
+    const { error } = await window.supabaseClient.from("comidas").delete()
+      .eq("id", id).eq("user_id", window.currentUser.id);
+    if (error) console.warn("cloudDeleteComida:", error.message);
   } catch (e) { console.warn(e); }
 }
 
@@ -141,6 +170,28 @@ async function cloudLoadComidas() {
     if (error) { console.warn(error.message); return []; }
     return data || [];
   } catch (e) { console.warn(e); return []; }
+}
+
+// ---------- BORRAR TODO (privacidad / reset de cuenta) ----------
+// Borra las 4 tablas para el usuario actual. Se usa desde "Borrar todo" en Perfil,
+// que antes solo limpiaba localStorage y dejaba intacta la copia en la nube.
+async function cloudDeleteAllUserData() {
+  if (!cloudAvailable()) return { ok: true, errors: [] };
+  const uid = window.currentUser.id;
+  const tables = [
+    { name: "registros_peso", col: "user_id" },
+    { name: "entrenamientos", col: "user_id" },
+    { name: "comidas", col: "user_id" },
+    { name: "perfiles", col: "id" }
+  ];
+  const errors = [];
+  for (const t of tables) {
+    try {
+      const { error } = await window.supabaseClient.from(t.name).delete().eq(t.col, uid);
+      if (error) errors.push(`${t.name}: ${error.message}`);
+    } catch (e) { errors.push(`${t.name}: ${e}`); }
+  }
+  return { ok: errors.length === 0, errors };
 }
 
 // ---------- HYDRATE ----------

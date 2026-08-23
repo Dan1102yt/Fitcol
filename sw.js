@@ -1,4 +1,7 @@
-const CACHE_NAME = 'fitcol-v2';
+// v3: se agregaron cloud-sync.js y excel-importer.js, que faltaban en el precache —
+// en la primerísima visita offline (antes de que el navegador los cacheara "de pasada"
+// al cargarlos online una vez) podían fallar en vez de servirse desde caché.
+const CACHE_NAME = 'fitcol-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -7,7 +10,9 @@ const STATIC_ASSETS = [
   '/data.js',
   '/ai.js',
   '/auth.js',
+  '/cloud-sync.js',
   '/food-search.js',
+  '/excel-importer.js',
   '/gamification.js',
   '/supabase-config.js',
   '/install-prompt.js',

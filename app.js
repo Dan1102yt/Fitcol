@@ -19,6 +19,9 @@ const defaultState = {
     trainingDays: 4,
     trainingGoal: "hipertrofia",
     distribution: "auto",
+    avoidGroups: [],
+    avoidExercises: [],
+    injuryNotes: "",
   },
   apiKey: "",
   units: "kg",
@@ -66,6 +69,20 @@ function saveState() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch { toast("No se pudo guardar (storage lleno)"); }
 }
+// Antes, "Importar datos" aceptaba cualquier JSON válido sin revisar su forma — un archivo
+// con, por ejemplo, "profile" como string en vez de objeto, dejaba el estado corrupto y
+// rompía la app en la siguiente vista hasta borrar el localStorage a mano.
+function validateImportedState(obj) {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return "Ese archivo no es un backup válido de Fitcol.";
+  if (obj.profile !== undefined && (typeof obj.profile !== "object" || obj.profile === null || Array.isArray(obj.profile))) {
+    return "El archivo no tiene el formato esperado (perfil inválido).";
+  }
+  const arrayFields = ["weightLog", "measurements", "photos", "customFoods", "customExercises", "customRoutines", "dietLog", "setLog", "workouts"];
+  for (const f of arrayFields) {
+    if (obj[f] !== undefined && !Array.isArray(obj[f])) return `El archivo no tiene el formato esperado (campo "${f}" inválido).`;
+  }
+  return null;
+}
 function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
 function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 // Fecha actualmente seleccionada en la vista Dieta (no se persiste: cada recarga vuelve a hoy)
@@ -100,6 +117,13 @@ function calcNutrition(p) {
   let kcal = tdee + dailyDelta;
   kcal = Math.max(tdee * 0.75, Math.min(tdee * 1.25, kcal));
   if (p.goal === "mantener") kcal = tdee;
+  // Piso absoluto de seguridad: el límite de arriba es relativo al TDEE, así que alguien
+  // con TDEE bajo (poca estatura/actividad) podía terminar con una meta diaria peligrosamente
+  // baja. Esto es un tope conservador de producto, no un consejo médico — cuando se activa,
+  // se lo avisamos al usuario en Perfil.
+  const safetyFloor = p.sex === "femenino" ? 1200 : 1500;
+  let cappedForSafety = false;
+  if (kcal < safetyFloor) { kcal = safetyFloor; cappedForSafety = true; }
   const proteinPerKg = p.goal === "mantener" ? 1.8 : 2.0;
   const protein = Math.round(p.weight * proteinPerKg);
   const fat = Math.round((kcal * 0.25) / 9);
@@ -108,7 +132,8 @@ function calcNutrition(p) {
     bmr: Math.round(bmr), tdee: Math.round(tdee), kcal: Math.round(kcal),
     protein, carbs: Math.max(0, carbs), fat,
     weeklyDeltaKg: Math.round((deltaKg / weeks) * 100) / 100,
-    dailyDeltaKcal: Math.round(dailyDelta)
+    dailyDeltaKcal: Math.round(dailyDelta),
+    cappedForSafety
   };
 }
 
@@ -176,7 +201,16 @@ function logMeal(entry) {
   const full = { id: uid(), date: diaSel(), source: "plan", ...entry };
   state.dietLog.push(full);
   saveState();
-  if (typeof cloudInsertComida === "function") cloudInsertComida(full);
+  // cloudInsertComida crea la fila en Supabase con su propio id (UUID) distinto del
+  // id local generado por uid(). Guardamos ese id de nube en la entrada local
+  // (full.cloudId) para poder editar/borrar esta comida en Supabase más adelante.
+  if (typeof cloudInsertComida === "function") {
+    Promise.resolve(cloudInsertComida(full)).then(cloudId => {
+      if (!cloudId) return;
+      const e = state.dietLog.find(x => x.id === full.id);
+      if (e) { e.cloudId = cloudId; saveState(); }
+    });
+  }
   if (typeof gamiOnActivity === "function") gamiOnActivity("meal");
 }
 
@@ -209,17 +243,24 @@ function generateRoutine(profile) {
   }
   const params = TRAINING_PARAMS[profile.trainingGoal] || TRAINING_PARAMS.hipertrofia;
   const exercisesPerGroup = profile.trainingGoal === "fuerza" ? 1 : 2;
+  // Lesiones/restricciones: excluye grupos musculares completos y/o ejercicios puntuales
+  // que el usuario marcó en Perfil, para que la rutina automática nunca los sugiera.
+  const avoidGroups = new Set(profile.avoidGroups || []);
+  const avoidExercises = new Set(profile.avoidExercises || []);
   const dayList = split.map((muscleGroups, idx) => {
+    const activeGroups = muscleGroups.filter(g => !avoidGroups.has(g));
     const exercises = [];
     const used = new Set();
-    muscleGroups.forEach(g => {
-      const pool = (EXERCISES[g] || []).concat(state.customExercises.filter(e => e.group === g));
+    activeGroups.forEach(g => {
+      const pool = (EXERCISES[g] || [])
+        .concat(state.customExercises.filter(e => e.group === g))
+        .filter(ex => !avoidExercises.has(ex.name));
       pickN(pool, Math.min(exercisesPerGroup, pool.length), used, idx, g).forEach(ex => {
         used.add(ex.name);
         exercises.push({ ...ex, group: g, sets: params.sets, reps: params.reps, rest: params.rest });
       });
     });
-    return { label: `Día ${idx + 1}`, muscleGroups, exercises };
+    return { label: `Día ${idx + 1}`, muscleGroups: activeGroups, exercises };
   });
   return {
     distribution: distKey, distributionName: dist.name, distributionDesc: dist.desc,
@@ -344,8 +385,10 @@ function dietLogRowHtml(e, opts = {}) {
 function bindDietLogRowEvents(rootEl) {
   (rootEl || document).querySelectorAll(".diet-edit").forEach(b => b.addEventListener("click", () => openEditLogger(b.dataset.id)));
   (rootEl || document).querySelectorAll(".diet-del").forEach(b => b.addEventListener("click", () => {
+    const removed = state.dietLog.find(e => e.id === b.dataset.id);
     state.dietLog = state.dietLog.filter(e => e.id !== b.dataset.id);
     saveState(); views.diet();
+    if (removed && typeof cloudDeleteComida === "function") cloudDeleteComida(removed.cloudId || removed.id);
   }));
 }
 
@@ -382,7 +425,9 @@ function openEditLogger(entryId) {
     if (!name || isNaN(kcal)) { toast("Faltan nombre o kcal"); return; }
     e.name = name; e.slot = v("#el-slot");
     e.kcal = kcal; e.p = parseInt(v("#el-p")) || 0; e.c = parseInt(v("#el-c")) || 0; e.f = parseInt(v("#el-f")) || 0;
-    saveState(); toast("Comida actualizada"); m.close(); views.diet();
+    saveState();
+    if (typeof cloudUpdateComida === "function") cloudUpdateComida(e.cloudId || e.id, e);
+    toast("Comida actualizada"); m.close(); views.diet();
   });
 }
 
@@ -1132,10 +1177,16 @@ function openPhotoLogger(slot) {
     result.innerHTML = `<div style="color:var(--text-muted); font-size:13px;">Analizando con IA…</div>`;
     try {
       const r = await analyzeFoodPhoto(dataUrl);
+      const confColor = r.confianza === "alta" ? "#4CAF50" : r.confianza === "media" ? "#FFC107" : "#F44336";
+      const confLabel = r.confianza === "alta"
+        ? "✓ Identificado con alta confianza"
+        : r.confianza === "media"
+        ? "⚠ Revisa el nombre y los valores"
+        : "⚠ Foto poco clara — por favor corrige los datos";
       result.innerHTML = `
         <div class="recipe-card open" style="margin:0;">
           <div class="recipe-name">${escapeHtml(r.nombre)}</div>
-          ${r.descripcion ? `<div class="card-meta" style="margin-bottom:8px;">${escapeHtml(r.descripcion)}</div>` : ""}
+          ${r.porcion ? `<div class="card-meta" style="margin-bottom:8px;">${escapeHtml(r.porcion)}</div>` : ""}
           <div class="recipe-meta">
             <span><strong>${r.kcal}</strong> kcal</span>
             <span><strong>${r.p}</strong>g prot</span>
@@ -1143,14 +1194,48 @@ function openPhotoLogger(slot) {
             <span><strong>${r.f}</strong>g grasa</span>
           </div>
         </div>
-        <p style="color:var(--text-dim); font-size:12px; margin-top:8px;">Después de registrarla podrás ajustar los valores tocando ✎ en la lista.</p>
+        <div style="color:${confColor}; font-size:13px; margin-top:10px;">${confLabel}</div>
+        ${r.nota ? `<div style="color:var(--text-dim); font-size:12px; margin-top:4px;">${escapeHtml(r.nota)}</div>` : ""}
         <button class="btn btn-primary btn-block" id="ph-confirm" style="margin-top:12px;">Registrar esta comida</button>
       `;
       m.root.querySelector("#ph-confirm").addEventListener("click", () => {
         const s = m.root.querySelector("#ph-slot").value;
-        logMeal({ slot: s, name: r.nombre, descripcion: r.descripcion || "", kcal: r.kcal, p: r.p, c: r.c, f: r.f, source: "photo", photo: currentDataUrl });
-        toast("Comida registrada por IA");
-        m.close(); views.diet();
+        const mc = modal(`
+          <h2 style="margin:0 0 4px;">🦅 ¿Esto es lo que comiste?</h2>
+          <p style="margin:0 0 14px;">Puedes editar el nombre y los valores antes de guardar</p>
+          <div style="color:${confColor}; font-size:13px; margin-bottom:14px;">${confLabel}</div>
+          <div class="field" style="margin-bottom:12px;">
+            <label>Nombre del plato</label>
+            <input type="text" id="cf-nombre" value="${escapeHtml(r.nombre)}" style="width:100%; min-width:0; box-sizing:border-box;">
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+            <div class="field"><label>Calorías</label><input type="number" id="cf-kcal" value="${r.kcal}" min="0" style="width:100%; min-width:0; box-sizing:border-box;"></div>
+            <div class="field"><label>Proteína (g)</label><input type="number" id="cf-p" value="${r.p}" min="0" style="width:100%; min-width:0; box-sizing:border-box;"></div>
+            <div class="field"><label>Carbos (g)</label><input type="number" id="cf-c" value="${r.c}" min="0" style="width:100%; min-width:0; box-sizing:border-box;"></div>
+            <div class="field"><label>Grasa (g)</label><input type="number" id="cf-f" value="${r.f}" min="0" style="width:100%; min-width:0; box-sizing:border-box;"></div>
+          </div>
+          ${r.porcion ? `<div style="color:var(--text-muted); font-size:12px; margin-bottom:6px;">Porción estimada: ${escapeHtml(r.porcion)}</div>` : ""}
+          ${r.nota ? `<div style="color:var(--text-dim); font-size:12px; margin-bottom:12px;">${escapeHtml(r.nota)}</div>` : ""}
+          <div style="display:flex; gap:10px; margin-top:8px;">
+            <button id="cf-save" style="flex:1; background:#D4A017; color:#000; border:none; border-radius:8px; padding:12px; font-weight:600; font-size:14px; cursor:pointer;">✓ Guardar así</button>
+            <button id="cf-cancel" style="flex:1; background:transparent; color:var(--text-muted); border:1px solid #555; border-radius:8px; padding:12px; font-size:14px; cursor:pointer;">✗ Cancelar</button>
+          </div>
+        `);
+        mc.root.querySelector(".modal").style.background = "#1A1A18";
+        mc.root.querySelector(".modal").style.borderColor = "#D4A017";
+        mc.root.querySelector("#cf-cancel").addEventListener("click", mc.close);
+        mc.root.querySelector("#cf-save").addEventListener("click", () => {
+          const nombre = mc.root.querySelector("#cf-nombre").value.trim() || r.nombre;
+          const kcal = Math.max(0, Math.round(Number(mc.root.querySelector("#cf-kcal").value) || 0));
+          const p = Math.max(0, Math.round(Number(mc.root.querySelector("#cf-p").value) || 0));
+          const c = Math.max(0, Math.round(Number(mc.root.querySelector("#cf-c").value) || 0));
+          const f = Math.max(0, Math.round(Number(mc.root.querySelector("#cf-f").value) || 0));
+          logMeal({ slot: s, name: nombre, descripcion: r.porcion || "", kcal, p, c, f, source: "photo", photo: currentDataUrl });
+          toast("Comida registrada por IA");
+          mc.close();
+          m.close();
+          views.diet();
+        });
       });
     } catch (err) {
       result.innerHTML = `<div style="color:var(--danger); font-size:13px;">${escapeHtml(err.message || String(err))}</div>`;
@@ -1239,7 +1324,9 @@ function renderActiveDay(r, dayIdx) {
         <h3>${day.label}</h3>
         <div class="muscle-tags">${day.muscleGroups.map(g => `<span class="muscle-tag">${g}</span>`).join("")}</div>
       </div>
-      ${day.exercises.map(ex => exerciseLogBlock(ex, sessionId)).join("")}
+      ${day.exercises.length === 0
+        ? `<div class="empty-state"><p>Este día no tiene ejercicios porque evitas todos sus grupos musculares. Ajusta tus restricciones en Perfil o añade un ejercicio extra abajo.</p></div>`
+        : day.exercises.map(ex => exerciseLogBlock(ex, sessionId)).join("")}
       <div style="display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;">
         <button class="btn btn-primary" id="finish-session">Finalizar sesión</button>
         <button class="btn" id="add-extra-ex">+ Añadir ejercicio extra</button>
@@ -1247,7 +1334,7 @@ function renderActiveDay(r, dayIdx) {
     </div>
   `;
   document.querySelectorAll(".set-row").forEach(row => attachSetRowListeners(row));
-  document.querySelectorAll(".add-set-btn").forEach(b => b.addEventListener("click", () => addExtraSet(b.dataset.exname, b.dataset.group, sessionId)));
+  document.querySelectorAll(".add-set-btn").forEach(b => b.addEventListener("click", () => addExtraSet(b.dataset.exname, b.dataset.group, b.dataset.equipo, sessionId)));
   document.getElementById("finish-session").addEventListener("click", () => {
     if (state.workouts.find(w => w.date === today && w.dayIndex === dayIdx)) {
       toast("Esta sesión ya está marcada como completada"); return;
@@ -1278,7 +1365,7 @@ function exerciseLogBlock(ex, sessionId) {
         <div class="set-table-head"><span>Set</span><span>Peso</span><span>Reps</span><span>Hecho</span></div>
         ${rows.join("")}
       </div>
-      <button class="btn btn-sm add-set-btn" data-exname="${escapeHtml(ex.name)}" data-group="${ex.group}">+ Añadir set</button>
+      <button class="btn btn-sm add-set-btn" data-exname="${escapeHtml(ex.name)}" data-group="${ex.group}" data-equipo="${escapeHtml(ex.equipo || "")}">+ Añadir set</button>
     </div>
   `;
 }
@@ -1289,7 +1376,7 @@ function setRowHtml(ex, sessionId, idx, existing) {
   const reps = existing ? existing.reps : "";
   const done = !!existing;
   return `
-    <div class="set-row ${done?"done":""}" data-exname="${escapeHtml(ex.name)}" data-group="${ex.group}" data-session="${sessionId}" data-idx="${idx}" ${existing ? `data-id="${existing.id}"` : ""}>
+    <div class="set-row ${done?"done":""}" data-exname="${escapeHtml(ex.name)}" data-group="${ex.group}" data-equipo="${escapeHtml(ex.equipo || "")}" data-session="${sessionId}" data-idx="${idx}" ${existing ? `data-id="${existing.id}"` : ""}>
       <span class="set-num">${idx + 1}</span>
       <div class="set-weight">
         <input type="number" step="0.5" class="weight-input" value="${weight}" placeholder="0">
@@ -1307,10 +1394,16 @@ function setRowHtml(ex, sessionId, idx, existing) {
 function attachSetRowListeners(row) {
   const check = row.querySelector(".set-check");
   check.addEventListener("click", () => {
-    const w = parseFloat(row.querySelector(".weight-input").value);
+    const isBodyweight = row.dataset.equipo === "peso corporal";
+    const w = parseFloat(row.querySelector(".weight-input").value) || 0;
     const r = parseInt(row.querySelector(".reps-input").value);
     const u = row.querySelector(".unit-select").value;
-    if (!w || !r) { toast("Indica peso y reps antes de marcar"); return; }
+    // Ejercicios de peso corporal (flexiones, dominadas, plancha…) no tienen "peso" que
+    // registrar — antes esto bloqueaba marcar el set salvo que el usuario inventara un peso falso.
+    if (!r || (!isBodyweight && !w)) {
+      toast(isBodyweight ? "Indica las repeticiones antes de marcar" : "Indica peso y reps antes de marcar");
+      return;
+    }
     const id = row.dataset.id;
     if (id) {
       const item = state.setLog.find(s => s.id === id);
@@ -1339,14 +1432,14 @@ function attachSetRowListeners(row) {
   });
 }
 
-function addExtraSet(exname, group, sessionId) {
+function addExtraSet(exname, group, equipo, sessionId) {
   const block = Array.from(document.querySelectorAll(".exercise-log-block"))
     .find(b => b.querySelector(".ex-name").textContent === exname);
   if (!block) return;
   const table = block.querySelector(".set-table");
   const idx = block.querySelectorAll(".set-row").length;
   const wrapper = document.createElement("div");
-  wrapper.innerHTML = setRowHtml({ name: exname, group, reps: "" }, sessionId, idx, null);
+  wrapper.innerHTML = setRowHtml({ name: exname, group, equipo, reps: "" }, sessionId, idx, null);
   const row = wrapper.firstElementChild;
   table.appendChild(row);
   attachSetRowListeners(row);
@@ -1384,7 +1477,7 @@ function openExtraExercisePicker(sessionId) {
     const finishBtn = container.querySelector("#finish-session").parentElement;
     container.querySelector(".workout-day").insertBefore(wrapper.firstElementChild, finishBtn);
     container.querySelectorAll(".set-row").forEach(row => attachSetRowListeners(row));
-    container.querySelectorAll(".add-set-btn").forEach(b => b.addEventListener("click", () => addExtraSet(b.dataset.exname, b.dataset.group, sessionId)));
+    container.querySelectorAll(".add-set-btn").forEach(b => b.addEventListener("click", () => addExtraSet(b.dataset.exname, b.dataset.group, b.dataset.equipo, sessionId)));
     m.close();
   }));
 }
@@ -1398,6 +1491,7 @@ function renderWorkoutPlan(r) {
         <h3>${day.label}</h3>
         <div class="muscle-tags">${day.muscleGroups.map(g => `<span class="muscle-tag">${g}</span>`).join("")}</div>
       </div>
+      ${day.exercises.length === 0 ? `<div class="empty-state"><p>Sin ejercicios este día (grupos musculares evitados).</p></div>` : ""}
       ${day.exercises.map(ex => `
         <div class="exercise-row">
           <div>
@@ -1941,6 +2035,41 @@ views.profile = function () {
     </div>
 
     <div class="card" style="margin-top: 18px;">
+      <div class="card-title">Lesiones y restricciones</div>
+      <p style="color:var(--text-muted); font-size:13px; margin-bottom:12px;">
+        La rutina automática nunca sugerirá ejercicios de los grupos o los ejercicios puntuales que marques aquí. El Asistente IA también ve estas notas al responderte.
+      </p>
+      <div class="field">
+        <label>Notas (lesiones, condiciones, lo que quieras que sepamos)</label>
+        <textarea id="pf-injury-notes" rows="2" placeholder="Ej: dolor de rodilla derecha, evitar impacto">${escapeHtml(p.injuryNotes || "")}</textarea>
+      </div>
+      <div class="field">
+        <label>Evitar estos grupos musculares por completo</label>
+        <div class="pill-group">
+          ${["pecho","espalda","piernas","hombros","brazos","core"].map(g => `
+            <button type="button" class="pill avoid-group-pill ${(p.avoidGroups || []).includes(g) ? "active" : ""}" data-g="${g}">${capitalize(g)}</button>
+          `).join("")}
+        </div>
+      </div>
+      <div class="field">
+        <label>Evitar ejercicios específicos</label>
+        ${Object.entries(EXERCISES).map(([g, list]) => `
+          <details class="pf-avoid-group" style="margin-bottom:6px;">
+            <summary style="cursor:pointer; padding:6px 0; color:var(--text-muted); font-size:13px; text-transform:capitalize;">${g}</summary>
+            <div style="padding:4px 0 8px 10px; display:flex; flex-direction:column; gap:6px;">
+              ${list.map(ex => `
+                <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:400; color:var(--text);">
+                  <input type="checkbox" class="pf-avoid-ex" value="${escapeHtml(ex.name)}" ${(p.avoidExercises || []).includes(ex.name) ? "checked" : ""}>
+                  ${escapeHtml(ex.name)}
+                </label>
+              `).join("")}
+            </div>
+          </details>
+        `).join("")}
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 18px;">
       <div class="card-title">Cálculos automáticos</div>
       <div class="grid-4">
         <div class="stat-card"><div class="label">BMR</div><div class="value">${n.bmr}<span class="unit">kcal</span></div><div class="delta">Calorías en reposo</div></div>
@@ -1948,6 +2077,7 @@ views.profile = function () {
         <div class="stat-card"><div class="label">Meta diaria</div><div class="value">${n.kcal}<span class="unit">kcal</span></div><div class="delta">${n.dailyDeltaKcal>=0?"+":""}${n.dailyDeltaKcal} kcal</div></div>
         <div class="stat-card"><div class="label">Cambio semanal</div><div class="value">${n.weeklyDeltaKg>=0?"+":""}${n.weeklyDeltaKg}<span class="unit">kg</span></div><div class="delta">${Math.abs(n.weeklyDeltaKg) > 1 ? "Ritmo agresivo" : "Ritmo seguro"}</div></div>
       </div>
+      ${n.cappedForSafety ? `<p style="color:var(--danger); font-size:13px; margin-top:10px;">Tu objetivo actual (peso meta / plazo) pediría menos calorías que un mínimo seguro, así que ajustamos tu meta diaria a ${n.kcal} kcal. Si buscas bajar de peso muy rápido, te recomendamos hablarlo con un profesional de salud.</p>` : ""}
     </div>
 
     <div class="card" style="margin-top: 18px;">
@@ -1976,6 +2106,9 @@ views.profile = function () {
     document.querySelectorAll(".goal-pill").forEach(x => x.classList.toggle("active", x.dataset.v === b.dataset.v));
     saveState();
   }));
+  document.querySelectorAll(".avoid-group-pill").forEach(b => b.addEventListener("click", () => {
+    b.classList.toggle("active");
+  }));
   document.getElementById("save-profile").addEventListener("click", () => {
     const v = id => document.getElementById(id).value;
     const newWeight = parseFloat(v("pf-weight")) || 70;
@@ -1990,12 +2123,16 @@ views.profile = function () {
     if (goal === "mantener" && Math.abs(newTarget - newWeight) > 2) {
       toast("Para mantener el peso, la meta debe estar a máximo ±2 kg del peso actual"); return;
     }
+    const avoidGroups = Array.from(document.querySelectorAll(".avoid-group-pill.active")).map(b => b.dataset.g);
+    const avoidExercises = Array.from(document.querySelectorAll(".pf-avoid-ex:checked")).map(cb => cb.value);
+    const injuryNotes = document.getElementById("pf-injury-notes").value.trim();
     Object.assign(state.profile, {
       name: v("pf-name"), age: parseInt(v("pf-age")) || 25, sex: v("pf-sex"),
       height: parseFloat(v("pf-height")) || 170, weight: newWeight,
       activity: v("pf-activity"), targetWeight: newTarget,
       weeks: parseInt(v("pf-weeks")) || 12, trainingDays: Math.max(0, Math.min(7, parseInt(v("pf-tdays")) || 0)),
-      trainingGoal: v("pf-tgoal"), distribution: v("pf-dist")
+      trainingGoal: v("pf-tgoal"), distribution: v("pf-dist"),
+      avoidGroups, avoidExercises, injuryNotes
     });
     state.units = v("pf-units");
     state.setupComplete = true;
@@ -2015,14 +2152,36 @@ views.profile = function () {
     const file = e.target.files[0]; if (!file) return;
     try {
       const obj = JSON.parse(await file.text());
+      const err = validateImportedState(obj);
+      if (err) { toast(err, 3200); e.target.value = ""; return; }
       state = deepMerge(structuredClone(defaultState), obj);
       saveState(); toast("Datos importados"); showView("dashboard");
     } catch { toast("Archivo inválido"); }
+    e.target.value = "";
   });
-  document.getElementById("reset-data").addEventListener("click", () => {
-    if (!confirm("¿Borrar TODOS los datos? No se puede deshacer.")) return;
+  document.getElementById("reset-data").addEventListener("click", async () => {
+    const cloudActive = typeof cloudAvailable === "function" && cloudAvailable();
+    const cloudWarn = cloudActive
+      ? " Esto también borrará tu información en la nube (perfil, pesos, entrenamientos y comidas)."
+      : "";
+    if (!confirm(`¿Borrar TODOS los datos?${cloudWarn} No se puede deshacer.`)) return;
+
+    const btn = document.getElementById("reset-data");
+    const originalLabel = btn ? btn.textContent : "";
+    if (btn) { btn.disabled = true; btn.textContent = "Borrando…"; }
+
+    if (cloudActive && typeof cloudDeleteAllUserData === "function") {
+      const res = await cloudDeleteAllUserData();
+      if (!res.ok) {
+        console.warn("cloudDeleteAllUserData:", res.errors);
+        toast("Se borró lo local, pero hubo un error borrando la nube. Revisa tu conexión e inténtalo de nuevo.", 3500);
+      }
+    }
+
     localStorage.removeItem(STORAGE_KEY);
+    if (typeof gamiReset === "function") gamiReset();
     state = structuredClone(defaultState);
+    if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
     showView("dashboard"); toast("Datos eliminados");
   });
 };

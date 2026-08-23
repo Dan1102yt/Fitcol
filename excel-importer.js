@@ -64,6 +64,15 @@ function parseNumber(v) {
   return isNaN(n) ? null : n;
 }
 
+// La columna de peso puede venir en libras (alias "lb"/"lbs" en COLUMN_ALIASES.peso),
+// pero antes se guardaba el número crudo directo en peso_kg sin convertir. Detecta el
+// encabezado real de la columna para saber en qué unidad viene.
+function detectWeightUnit(header) {
+  const n = normalize(header);
+  return n.includes("lb") ? "lb" : "kg";
+}
+function lbToKgLocal(lb) { return Math.round(lb * 0.4536 * 100) / 100; }
+
 function openExcelImporter() {
   const html = `
     <h2>Importar historial de Excel</h2>
@@ -137,6 +146,8 @@ function openExcelImporter() {
     const total = dataRows.length;
     const toInsert = [];
     const errors = [];
+    const pesoUnit = map.peso >= 0 ? detectWeightUnit(headers[map.peso]) : "kg";
+    let convertedCount = 0;
 
     for (let i = 0; i < total; i++) {
       const row = dataRows[i];
@@ -145,15 +156,24 @@ function openExcelImporter() {
       if (!fecha || !ejercicio) { errors.push(`Fila ${i + 2}: falta fecha o ejercicio`); continue; }
       const series = map.series >= 0 ? parseNumber(row[map.series]) : null;
       const repes  = map.repeticiones >= 0 ? parseNumber(row[map.repeticiones]) : null;
-      const peso   = map.peso >= 0 ? parseNumber(row[map.peso]) : null;
-      const notas  = map.notas >= 0 ? String(row[map.notas] || "").trim() || null : null;
+      const pesoRaw = map.peso >= 0 ? parseNumber(row[map.peso]) : null;
+      let notas  = map.notas >= 0 ? String(row[map.notas] || "").trim() || null : null;
+
+      // La columna de peso puede venir en libras (encabezado tipo "lb"/"lbs") — antes esto
+      // se guardaba directo en peso_kg sin convertir, duplicando de hecho el peso real.
+      let peso_kg = pesoRaw;
+      if (pesoRaw != null && pesoUnit === "lb") {
+        peso_kg = lbToKgLocal(pesoRaw);
+        convertedCount++;
+        notas = (notas ? notas + " · " : "") + `Convertido de ${pesoRaw} lb`;
+      }
 
       toInsert.push({
         fecha,
         ejercicio,
         series: series ? Math.round(series) : null,
         repeticiones: repes ? Math.round(repes) : null,
-        peso_kg: peso,
+        peso_kg,
         notas
       });
 
@@ -175,7 +195,7 @@ function openExcelImporter() {
       saveState();
       progress.style.display = "none";
       result.style.display = "block";
-      result.innerHTML = renderImportResult(toInsert.length, errors, "localStorage (sin sesión Supabase)");
+      result.innerHTML = renderImportResult(toInsert.length, errors, "localStorage (sin sesión Supabase)", convertedCount);
       return;
     }
 
@@ -207,14 +227,15 @@ function openExcelImporter() {
 
     progress.style.display = "none";
     result.style.display = "block";
-    result.innerHTML = renderImportResult(inserted, errors);
+    result.innerHTML = renderImportResult(inserted, errors, "", convertedCount);
     if (typeof showView === "function") showView(currentView);
   }
 
-  function renderImportResult(inserted, errors, suffix = "") {
+  function renderImportResult(inserted, errors, suffix = "", convertedCount = 0) {
     return `
       <div style="background:var(--accent-soft); border:1px solid var(--accent); padding:12px; border-radius:8px; color:var(--text);">
         Se importaron <strong>${inserted}</strong> registros correctamente${suffix ? " en " + suffix : ""}.
+        ${convertedCount ? ` <strong>${convertedCount}</strong> se convirtieron de libras a kilos automáticamente.` : ""}
       </div>
       ${errors.length ? `
         <div style="margin-top:10px; max-height:160px; overflow-y:auto;">

@@ -256,3 +256,10 @@ function gamiInit() {
   gamiCheckReset(g);
   gamiRenderStreakBadge(g, false);
 }
+
+// Borra racha, nivel y logros. Usado desde "Borrar todo" en Perfil — antes ese botón
+// solo tocaba fitcol.state.v1 y dejaba fitcol.gami.v1 (esta clave) intacta.
+function gamiReset() {
+  try { localStorage.removeItem(GAMI_KEY); } catch {}
+  gamiRenderStreakBadge(gamiDefault(), false);
+}

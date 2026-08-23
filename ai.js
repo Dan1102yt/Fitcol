@@ -72,7 +72,12 @@ async function fetchUserContext() {
     altura_cm: p.height, peso_kg: p.weight, peso_meta_kg: p.targetWeight, plazo_semanas: p.weeks,
     objetivo: p.goal, actividad: p.activity,
     meta_diaria: { kcal: n.kcal, proteina: n.protein, carbos: n.carbs, grasa: n.fat },
-    entrenamiento: { dias_semana: p.trainingDays, objetivo: p.trainingGoal, distribucion: p.distribution }
+    entrenamiento: { dias_semana: p.trainingDays, objetivo: p.trainingGoal, distribucion: p.distribution },
+    lesiones_y_restricciones: {
+      notas: p.injuryNotes || null,
+      grupos_a_evitar: p.avoidGroups || [],
+      ejercicios_a_evitar: p.avoidExercises || []
+    }
   };
 
   let entrenamientos = [];
@@ -130,21 +135,27 @@ async function sendChatMessage(userText, onChunk) {
 // Análisis de foto de comida
 // -----------------------------------------------------
 async function analyzeFoodPhoto(dataUrl) {
-  const message = `Analiza esta foto de comida (preferiblemente colombiana) y estima sus macros con la mayor precisión posible.
+  const message = `Eres un nutricionista experto con conocimiento de comida colombiana e internacional. Analiza esta foto de comida con precisión.
+
+INSTRUCCIONES:
+1. Identifica QUÉ ES exactamente lo que ves en la foto — sin asumir que es comida colombiana si claramente es otra cosa.
+2. Si ves una hamburguesa, di hamburguesa. Si ves pizza, di pizza. Si ves arepa, di arepa. Sé específico con el nombre real.
+3. Estima los macros basándote en lo que VES visualmente — porción, ingredientes visibles, tamaño aproximado.
+4. Si la foto es poco clara o no puedes identificar bien, indícalo en el campo "confianza".
 
 Si la foto NO contiene comida, devuelve EXCLUSIVAMENTE: {"error":"no_food"}
 
-Si la foto SÍ contiene comida, devuelve EXCLUSIVAMENTE un JSON con esta forma exacta — sin markdown, sin explicaciones, sin texto adicional:
+Si la foto SÍ contiene comida, devuelve EXCLUSIVAMENTE este JSON sin markdown, sin texto adicional:
 {
-  "nombre": "nombre breve del plato",
-  "descripcion": "alimentos visibles, 1 línea",
-  "kcal": numero entero,
-  "p": gramos de proteína (entero),
-  "c": gramos de carbohidratos (entero),
-  "f": gramos de grasa (entero)
-}
-
-Sé realista; estima porciones con referencias típicas (arepa media ~70g, taza de arroz cocido ~150g, presa de pollo ~120g, huevo ~50g, cucharada de aceite ~14g).`;
+  "nombre": "nombre específico y real del plato (ej: Sandwich Subway de pollo, Bandeja paisa, Pizza margarita)",
+  "calorias": número entero,
+  "proteina": número en gramos,
+  "carbos": número en gramos,
+  "grasa": número en gramos,
+  "porcion": "descripción de la porción estimada (ej: 1 unidad mediana ~300g)",
+  "confianza": "alta|media|baja",
+  "nota": "observación breve si algo no está claro o si los valores son estimados"
+}`;
 
   const text = await callWorker({ message, image: dataUrl });
   const match = text.match(/\{[\s\S]*\}/);
@@ -153,10 +164,12 @@ Sé realista; estima porciones con referencias típicas (arepa media ~70g, taza 
   if (json.error === "no_food") throw new Error("No detecté comida en la foto. Intenta otra imagen.");
   return {
     nombre: json.nombre || "Comida analizada",
-    descripcion: json.descripcion || "",
-    kcal: Math.max(0, Math.round(Number(json.kcal) || 0)),
-    p: Math.max(0, Math.round(Number(json.p) || 0)),
-    c: Math.max(0, Math.round(Number(json.c) || 0)),
-    f: Math.max(0, Math.round(Number(json.f) || 0))
+    kcal: Math.max(0, Math.round(Number(json.calorias) || 0)),
+    p: Math.max(0, Math.round(Number(json.proteina) || 0)),
+    c: Math.max(0, Math.round(Number(json.carbos) || 0)),
+    f: Math.max(0, Math.round(Number(json.grasa) || 0)),
+    porcion: json.porcion || "",
+    confianza: json.confianza || "media",
+    nota: json.nota || ""
   };
 }
