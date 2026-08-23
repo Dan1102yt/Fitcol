@@ -1377,7 +1377,17 @@ function renderActiveDay(r, dayIdx) {
 
 function exerciseLogBlock(ex, sessionId) {
   const setsCount = parseInt((ex.sets || "3").toString().split("-")[0]) || 3;
-  const existingSets = state.setLog.filter(s => s.sessionId === sessionId && s.exerciseName === ex.name);
+  // Antes esto exigía sessionId EXACTO ("<fecha>-d<idx>"). El problema: los sets
+  // que cloudHydrate() reconstruye desde Supabase después de cerrar y reabrir la
+  // app llevan un sessionId distinto ("<fecha>-cloud"), porque la tabla
+  // "entrenamientos" no guarda a qué día del split pertenecía cada set. Con el
+  // match exacto, esos sets SÍ estaban guardados (se veían en Supabase) pero
+  // nunca calzaban con el filtro, así que la pantalla los mostraba vacíos —
+  // parecía que "no se guardaba" aunque el dato sí existía. Ahora se matchea
+  // por fecha + nombre del ejercicio, que es lo que en verdad define "ya hice
+  // esto hoy", sin importar bajo qué sessionId haya quedado guardado.
+  const today = todayISO();
+  const existingSets = state.setLog.filter(s => s.date === today && s.exerciseName === ex.name);
   const rows = [];
   for (let i = 0; i < Math.max(setsCount, existingSets.length); i++) {
     rows.push(setRowHtml(ex, sessionId, i, existingSets[i]));

@@ -276,12 +276,23 @@ async function cloudHydrate() {
       reps: e.repeticiones || 0,
       synced: true
     }));
+    // Antes de reintentar el insert de un set marcado "no sincronizado", nos
+    // fijamos si ya hay en la nube una fila con la misma fecha/ejercicio/peso/
+    // reps — puede pasar que el insert original SÍ haya llegado a Supabase
+    // pero la app se haya cerrado antes de que la respuesta marcara el set
+    // como synced localmente. Sin este chequeo, cada reintento crearía una
+    // fila duplicada en "entrenamientos".
+    const setKey = s => `${s.date}|${s.exerciseName}|${s.weight}|${s.reps}`;
+    const cloudSetKeys = new Set(cloudSetLog.map(setKey));
     const pendingSets = (state.setLog || []).filter(s => !s.synced);
+    const stillPendingSets = [];
     for (const s of pendingSets) {
+      if (cloudSetKeys.has(setKey(s))) { s.synced = true; continue; }
       const ok = await cloudInsertSet(s);
       if (ok) s.synced = true;
+      stillPendingSets.push(s);
     }
-    state.setLog = cloudSetLog.concat(pendingSets);
+    state.setLog = cloudSetLog.concat(stillPendingSets);
 
     // --- Comidas: las locales llevan cloudId una vez confirmadas (ver logMeal en app.js) ---
     const slotMatch = (nombre) => {
