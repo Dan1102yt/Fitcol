@@ -128,12 +128,17 @@ function calcNutrition(p) {
   const protein = Math.round(p.weight * proteinPerKg);
   const fat = Math.round((kcal * 0.25) / 9);
   const carbs = Math.round((kcal - protein * 4 - fat * 9) / 4);
+  const weeklyDeltaKg = Math.round((deltaKg / weeks) * 100) / 100;
+  // El piso de arriba solo cubre déficits demasiado agresivos (bajar de peso muy rápido).
+  // Un objetivo de SUBIR de peso muy rápido no activaba ningún aviso — se sentía "sin
+  // validar" aunque el cálculo internamente sí limitaba las calorías al +25% del TDEE.
+  const aggressiveRate = p.goal !== "mantener" && Math.abs(weeklyDeltaKg) > 1;
   return {
     bmr: Math.round(bmr), tdee: Math.round(tdee), kcal: Math.round(kcal),
     protein, carbs: Math.max(0, carbs), fat,
-    weeklyDeltaKg: Math.round((deltaKg / weeks) * 100) / 100,
+    weeklyDeltaKg,
     dailyDeltaKcal: Math.round(dailyDelta),
-    cappedForSafety
+    cappedForSafety, aggressiveRate
   };
 }
 
@@ -2053,19 +2058,21 @@ views.profile = function () {
       </div>
       <div class="field">
         <label>Evitar ejercicios específicos</label>
-        ${Object.entries(EXERCISES).map(([g, list]) => `
-          <details class="pf-avoid-group" style="margin-bottom:6px;">
-            <summary style="cursor:pointer; padding:6px 0; color:var(--text-muted); font-size:13px; text-transform:capitalize;">${g}</summary>
-            <div style="padding:4px 0 8px 10px; display:flex; flex-direction:column; gap:6px;">
-              ${list.map(ex => `
-                <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:400; color:var(--text);">
-                  <input type="checkbox" class="pf-avoid-ex" value="${escapeHtml(ex.name)}" ${(p.avoidExercises || []).includes(ex.name) ? "checked" : ""}>
-                  ${escapeHtml(ex.name)}
-                </label>
-              `).join("")}
-            </div>
-          </details>
-        `).join("")}
+        <div class="pf-avoid-ex-list">
+          ${Object.entries(EXERCISES).map(([g, list]) => `
+            <details class="wm-details pf-avoid-group">
+              <summary style="text-transform:capitalize;">${g}</summary>
+              <div class="pf-avoid-ex-group">
+                ${list.map(ex => `
+                  <label class="pf-avoid-ex-label">
+                    <input type="checkbox" class="pf-avoid-ex" value="${escapeHtml(ex.name)}" ${(p.avoidExercises || []).includes(ex.name) ? "checked" : ""}>
+                    ${escapeHtml(ex.name)}
+                  </label>
+                `).join("")}
+              </div>
+            </details>
+          `).join("")}
+        </div>
       </div>
     </div>
 
@@ -2075,9 +2082,10 @@ views.profile = function () {
         <div class="stat-card"><div class="label">BMR</div><div class="value">${n.bmr}<span class="unit">kcal</span></div><div class="delta">Calorías en reposo</div></div>
         <div class="stat-card"><div class="label">TDEE</div><div class="value">${n.tdee}<span class="unit">kcal</span></div><div class="delta">Gasto total diario</div></div>
         <div class="stat-card"><div class="label">Meta diaria</div><div class="value">${n.kcal}<span class="unit">kcal</span></div><div class="delta">${n.dailyDeltaKcal>=0?"+":""}${n.dailyDeltaKcal} kcal</div></div>
-        <div class="stat-card"><div class="label">Cambio semanal</div><div class="value">${n.weeklyDeltaKg>=0?"+":""}${n.weeklyDeltaKg}<span class="unit">kg</span></div><div class="delta">${Math.abs(n.weeklyDeltaKg) > 1 ? "Ritmo agresivo" : "Ritmo seguro"}</div></div>
+        <div class="stat-card"><div class="label">Cambio semanal</div><div class="value">${n.weeklyDeltaKg>=0?"+":""}${n.weeklyDeltaKg}<span class="unit">kg</span></div><div class="delta" style="${n.aggressiveRate ? "color:var(--danger); font-weight:600;" : ""}">${Math.abs(n.weeklyDeltaKg) > 1 ? "Ritmo agresivo" : "Ritmo seguro"}</div></div>
       </div>
       ${n.cappedForSafety ? `<p style="color:var(--danger); font-size:13px; margin-top:10px;">Tu objetivo actual (peso meta / plazo) pediría menos calorías que un mínimo seguro, así que ajustamos tu meta diaria a ${n.kcal} kcal. Si buscas bajar de peso muy rápido, te recomendamos hablarlo con un profesional de salud.</p>` : ""}
+      ${!n.cappedForSafety && n.aggressiveRate ? `<p style="color:var(--danger); font-size:13px; margin-top:10px;">${n.weeklyDeltaKg > 0 ? "Ganar" : "Bajar"} ${Math.abs(n.weeklyDeltaKg)} kg por semana es un ritmo agresivo (lo recomendado es no más de 1 kg/semana). Considera un plazo más largo o hablarlo con un profesional de salud.</p>` : ""}
     </div>
 
     <div class="card" style="margin-top: 18px;">
@@ -2098,7 +2106,7 @@ views.profile = function () {
       <button class="btn" id="export-data">Exportar datos</button>
       <button class="btn" id="import-data">Importar datos</button>
       <button class="btn btn-danger" id="reset-data">Borrar todo</button>
-      <input type="file" id="import-file" accept="application/json" style="display:none">
+      <input type="file" id="import-file" accept=".json,application/json,text/plain" style="display:none">
     </div>
   `;
   document.querySelectorAll(".goal-pill").forEach(b => b.addEventListener("click", () => {

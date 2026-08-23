@@ -1235,6 +1235,38 @@ a { color: var(--accent); text-decoration: none; }
 }
 .wm-details[open] summary { color: var(--accent); margin-bottom: 12px; }
 
+/* Lista de ejercicios a evitar (Perfil → Lesiones y restricciones).
+   Antes estos <label> heredaban ".field label" (mayúsculas + letter-spacing
+   pensado para etiquetas de campo cortas), lo que hacía ver la lista de
+   nombres de ejercicio estirada y desalineada. Clase propia que anula
+   esa herencia explícitamente y fuerza alineación a la izquierda. */
+.pf-avoid-ex-list { margin-top: 4px; }
+.pf-avoid-ex-list .wm-details { margin-top: 8px; padding: 10px 12px; }
+.pf-avoid-ex-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  text-align: left;
+}
+.pf-avoid-ex-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 4px;
+  border-radius: 6px;
+  text-align: left;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  color: var(--text) !important;
+  cursor: pointer;
+}
+.pf-avoid-ex-label:hover { background: var(--bg-elev-2); }
+.pf-avoid-ex-label input[type="checkbox"] { flex-shrink: 0; margin: 0; }
+
 /* =====================================================
    Buscador comidas
 ===================================================== */
