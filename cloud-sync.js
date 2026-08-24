@@ -179,6 +179,23 @@ async function cloudLoadComidas() {
   } catch (e) { console.warn(e); return []; }
 }
 
+// ---------- CHAT EVENTS (medir uso del Asistente IA) ----------
+// El chat vive solo en el celular (state.chat, local) y las llamadas al Worker de
+// Cloudflare no quedan registradas en ningún lado — así que hoy no hay forma de saber
+// cuántos testers de la beta usaron el asistente ni una vez. Esto solo registra
+// "alguien usó el chat / el análisis de foto", nunca el contenido del mensaje.
+// tipo: "chat" | "foto"
+async function cloudLogChatEvent(tipo) {
+  if (!cloudAvailable()) return;
+  try {
+    const { error } = await window.supabaseClient.from("chat_events").insert({
+      user_id: window.currentUser.id,
+      tipo
+    });
+    if (error) console.warn("cloudLogChatEvent:", error.message);
+  } catch (e) { console.warn(e); }
+}
+
 // ---------- BORRAR TODO (privacidad / reset de cuenta) ----------
 // Borra las 4 tablas para el usuario actual. Se usa desde "Borrar todo" en Perfil,
 // que antes solo limpiaba localStorage y dejaba intacta la copia en la nube.
@@ -189,6 +206,7 @@ async function cloudDeleteAllUserData() {
     { name: "registros_peso", col: "user_id" },
     { name: "entrenamientos", col: "user_id" },
     { name: "comidas", col: "user_id" },
+    { name: "chat_events", col: "user_id" },
     { name: "perfiles", col: "id" }
   ];
   const errors = [];

@@ -104,11 +104,28 @@ ALTER TABLE comidas ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Solo el dueño" ON comidas
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
+-- ============ CHAT EVENTS (medir uso del Asistente IA) ============
+-- Solo registra "hubo un mensaje de chat" o "hubo un análisis de foto" — nunca el
+-- contenido. Sirve para medir en la beta cuántos testers usan el asistente al menos
+-- una vez, algo que antes no quedaba registrado en ningún lado.
+CREATE TABLE chat_events (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users NOT NULL,
+  tipo TEXT NOT NULL CHECK (tipo IN ('chat', 'foto')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE chat_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Solo el dueño" ON chat_events
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
 -- ============ ÍNDICES ÚTILES ============
 CREATE INDEX idx_peso_user_fecha ON registros_peso (user_id, fecha DESC);
 CREATE INDEX idx_entren_user_fecha ON entrenamientos (user_id, fecha DESC);
 CREATE INDEX idx_comidas_user_fecha ON comidas (user_id, fecha DESC);
+CREATE INDEX idx_chatev_user_fecha ON chat_events (user_id, created_at DESC);
 ```
+
+**Si ya tienes las otras 4 tablas creadas y solo necesitas agregar `chat_events`**, corre únicamente el bloque de arriba de `chat_events` (desde `CREATE TABLE chat_events` hasta su índice) — no hace falta rehacer las demás.
 
 Verifica en **Table Editor**: deben aparecer las 4 tablas con un candado (RLS habilitado).
 
@@ -161,6 +178,7 @@ GitHub Pages reconstruye en 1-2 min. La app empezará a pedir login automáticam
 6. Marca un set en Entrenamiento: aparece en `entrenamientos`.
 7. Agrega una comida desde el buscador de Open Food Facts: aparece en `comidas`.
 8. Importa un Excel desde Entrenamiento → Mis rutinas → "Importar historial Excel". Las filas aparecen en `entrenamientos`.
+9. Manda un mensaje al Asistente IA (o analiza una foto de comida): aparece una fila en `chat_events` con `tipo` "chat" o "foto".
 
 ---
 

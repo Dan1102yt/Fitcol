@@ -128,7 +128,11 @@ async function sendChatMessage(userText, onChunk) {
     ? "\n\nConversación previa:\n" + history.map(m => `${m.role === "user" ? "Usuario" : "Asistente"}: ${m.content}`).join("\n") + "\n"
     : "";
   const message = `${historyText}\nPregunta actual: ${userText}`;
-  return await callWorker({ message, contexto_usuario, onChunk });
+  const result = await callWorker({ message, contexto_usuario, onChunk });
+  // Se registra solo si la llamada terminó bien — un intento fallido (sin red, error
+  // del Worker) no cuenta como "usó el asistente". Ver cloudLogChatEvent en cloud-sync.js.
+  if (typeof cloudLogChatEvent === "function") cloudLogChatEvent("chat");
+  return result;
 }
 
 // -----------------------------------------------------
@@ -162,6 +166,7 @@ Si la foto SÍ contiene comida, devuelve EXCLUSIVAMENTE este JSON sin markdown, 
   if (!match) throw new Error("La IA no devolvió un JSON parseable.");
   const json = JSON.parse(match[0]);
   if (json.error === "no_food") throw new Error("No detecté comida en la foto. Intenta otra imagen.");
+  if (typeof cloudLogChatEvent === "function") cloudLogChatEvent("foto");
   return {
     nombre: json.nombre || "Comida analizada",
     kcal: Math.max(0, Math.round(Number(json.calorias) || 0)),

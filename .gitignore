@@ -4,3 +4,7 @@ Thumbs.db
 .vscode/
 .idea/
 node_modules/
+
+# Config local de Obsidian (el vault de notas del proyecto vive en notas/,
+# pero su configuración de la app no debe subirse al repo)
+.obsidian/
