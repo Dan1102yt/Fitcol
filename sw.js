@@ -1,7 +1,12 @@
-// v3: se agregaron cloud-sync.js y excel-importer.js, que faltaban en el precache —
-// en la primerísima visita offline (antes de que el navegador los cacheara "de pasada"
-// al cargarlos online una vez) podían fallar en vez de servirse desde caché.
-const CACHE_NAME = 'fitcol-v3';
+// v4: el código propio de la app (html/css/js del mismo origen) pasa de "cache first"
+// a "network first". Antes, una vez que el Service Worker cacheaba app.js/cloud-sync.js/
+// etc. la primera vez, TODOS los deploys siguientes quedaban invisibles para cualquier
+// pestaña que ya los tuviera cacheados — el SW respondía directo desde caché sin
+// siquiera intentar la red. Eso hizo que varias rondas de fixes reales "no se vieran"
+// en el celular aunque estuvieran bien publicadas. Ahora el código propio siempre
+// intenta la red primero (y solo cae a caché si de verdad no hay conexión) — así un
+// usuario conectado a internet siempre ve la versión más nueva.
+const CACHE_NAME = 'fitcol-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -71,8 +76,14 @@ self.addEventListener('fetch', event => {
   // Only handle GET requests
   if (request.method !== 'GET') return;
 
-  // Network First: Supabase, Anthropic Worker, Open Food Facts
+  // El código propio de la app (mismo origen, .js/.css/.html/"/") también va por
+  // network-first — ver comentario junto a CACHE_NAME más arriba.
+  const isOwnCode = url.origin === self.location.origin &&
+    (url.pathname.endsWith('.js') || url.pathname.endsWith('.css') || url.pathname.endsWith('.html') || url.pathname === '/');
+
+  // Network First: Supabase, Anthropic Worker, Open Food Facts, y el código propio
   const networkFirst =
+    isOwnCode ||
     url.hostname.includes('supabase.co') ||
     url.hostname.includes('workers.dev') ||
     url.hostname.includes('openfoodfacts.org') ||
@@ -80,14 +91,31 @@ self.addEventListener('fetch', event => {
 
   if (networkFirst) {
     event.respondWith(
-      fetch(request).catch(() =>
-        caches.match(request).then(cached => cached || new Response('{}', { headers: { 'Content-Type': 'application/json' } }))
-      )
+      fetch(request)
+        .then(response => {
+          // Actualiza la caché con la versión fresca para que el fallback offline
+          // (si algún día no hay conexión) tampoco quede desactualizado por siempre.
+          if (response.ok && isOwnCode) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() =>
+          caches.match(request).then(cached => {
+            if (cached) return cached;
+            if (request.mode === 'navigate') {
+              return new Response(OFFLINE_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+            }
+            return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+          })
+        )
     );
     return;
   }
 
-  // Cache First with network fallback for everything else
+  // Cache First with network fallback para lo que rara vez cambia (íconos, manifest,
+  // librerías de CDN con versión fija en la URL)
   event.respondWith(
     caches.match(request).then(cached => {
       if (cached) return cached;
