@@ -13,6 +13,7 @@ const STATIC_ASSETS = [
   '/styles.css',
   '/app.js',
   '/data.js',
+  '/restaurant-foods.js',
   '/ai.js',
   '/auth.js',
   '/cloud-sync.js',

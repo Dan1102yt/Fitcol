@@ -139,19 +139,30 @@ async function sendChatMessage(userText, onChunk) {
 // Análisis de foto de comida
 // -----------------------------------------------------
 async function analyzeFoodPhoto(dataUrl) {
+  // Cadenas que existen en RESTAURANT_FOODS (restaurant-foods.js) — se las
+  // listamos a la IA para que, si reconoce el plato como de una de ellas,
+  // lo diga explícitamente en "restaurante". Eso nos permite después buscar
+  // el valor REAL en nuestra base de datos en vez de confiar solo en la
+  // estimación visual (ver findReferenceFoodMatch más abajo).
+  const cadenasConocidas = typeof RESTAURANT_FOODS !== "undefined"
+    ? Object.keys(RESTAURANT_FOODS).join(", ")
+    : "";
+
   const message = `Eres un nutricionista experto con conocimiento de comida colombiana e internacional. Analiza esta foto de comida con precisión.
 
 INSTRUCCIONES:
 1. Identifica QUÉ ES exactamente lo que ves en la foto — sin asumir que es comida colombiana si claramente es otra cosa.
 2. Si ves una hamburguesa, di hamburguesa. Si ves pizza, di pizza. Si ves arepa, di arepa. Sé específico con el nombre real.
-3. Estima los macros basándote en lo que VES visualmente — porción, ingredientes visibles, tamaño aproximado.
-4. Si la foto es poco clara o no puedes identificar bien, indícalo en el campo "confianza".
+3. Si por el empaque, envoltorio, vasos, logos o el plato/plato en el que está servida reconoces que es de una cadena de comida específica${cadenasConocidas ? ` — en particular alguna de estas, muy comunes en centros comerciales colombianos: ${cadenasConocidas}` : ""} — indícalo en el campo "restaurante". Si no estás razonablemente seguro, deja "restaurante" en null; no adivines.
+4. Estima los macros basándote en lo que VES visualmente — porción, ingredientes visibles, tamaño aproximado. Esta estimación se usa como respaldo si no logramos identificar el plato exacto en nuestra base de datos.
+5. Si la foto es poco clara o no puedes identificar bien, indícalo en el campo "confianza".
 
 Si la foto NO contiene comida, devuelve EXCLUSIVAMENTE: {"error":"no_food"}
 
 Si la foto SÍ contiene comida, devuelve EXCLUSIVAMENTE este JSON sin markdown, sin texto adicional:
 {
   "nombre": "nombre específico y real del plato (ej: Sandwich Subway de pollo, Bandeja paisa, Pizza margarita)",
+  "restaurante": "nombre de la cadena si la reconoces con confianza, o null",
   "calorias": número entero,
   "proteina": número en gramos,
   "carbos": número en gramos,
@@ -167,7 +178,8 @@ Si la foto SÍ contiene comida, devuelve EXCLUSIVAMENTE este JSON sin markdown, 
   const json = JSON.parse(match[0]);
   if (json.error === "no_food") throw new Error("No detecté comida en la foto. Intenta otra imagen.");
   if (typeof cloudLogChatEvent === "function") cloudLogChatEvent("foto");
-  return {
+
+  const visual = {
     nombre: json.nombre || "Comida analizada",
     kcal: Math.max(0, Math.round(Number(json.calorias) || 0)),
     p: Math.max(0, Math.round(Number(json.proteina) || 0)),
@@ -177,4 +189,27 @@ Si la foto SÍ contiene comida, devuelve EXCLUSIVAMENTE este JSON sin markdown, 
     confianza: json.confianza || "media",
     nota: json.nota || ""
   };
+
+  // Si la IA reconoció el plato (con o sin cadena) y hace match razonable
+  // contra nuestra base de datos de referencia, preferimos ese valor real
+  // sobre la estimación visual — es el mismo principio que usan apps como
+  // Fitia: ancla el resultado a datos conocidos en vez de "adivinar" siempre
+  // desde cero. Si no hay match confiable, se queda la estimación visual tal cual.
+  if (typeof findReferenceFoodMatch === "function") {
+    const ref = findReferenceFoodMatch(json.nombre, json.restaurante || null);
+    if (ref) {
+      const fuenteTxt = ref.restaurante
+        ? `Ajustado con datos reales de ${ref.restaurante} (${ref.name}).`
+        : `Ajustado con la base de datos de comida colombiana de Fitcol (${ref.name}).`;
+      return {
+        nombre: json.nombre || ref.name,
+        kcal: ref.kcal, p: ref.p, c: ref.c, f: ref.f,
+        porcion: visual.porcion,
+        confianza: "alta",
+        nota: [fuenteTxt, visual.nota].filter(Boolean).join(" ")
+      };
+    }
+  }
+
+  return visual;
 }
