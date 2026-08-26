@@ -317,14 +317,31 @@ async function cloudHydrate() {
       const m = nombre.match(/^\[(desayuno|almuerzo|snack|cena)\]\s*(.*)$/i);
       return m ? { slot: m[1].toLowerCase(), name: m[2] } : { slot: "snack", name: nombre };
     };
+    // La tabla "comidas" no tiene columna para la foto ni la descripción de la IA —
+    // solo viven en este dispositivo. Antes, cada hydrate reconstruía la comida
+    // 100% desde la nube y esos dos campos se perdían apenas la comida quedaba
+    // confirmada (cloudId asignado) — la foto se veía al registrarla pero
+    // desaparecía en el siguiente refresh/apertura de la app. Ahora, si ya existe
+    // una entrada local con foto para ese cloudId, se conserva foto/descripción/
+    // origen y solo se refrescan los macros por si se editaron desde otro lado.
+    const localPhotoByCloudId = new Map(
+      (state.dietLog || [])
+        .filter(e => e.cloudId && e.source === "photo" && e.photo)
+        .map(e => [e.cloudId, e])
+    );
     const cloudDietLog = comidas.map(c => {
       const { slot, name } = slotMatch(c.nombre);
+      const kcal = Number(c.calorias) || 0;
+      const p = Number(c.proteina) || 0;
+      const cc = Number(c.carbohidratos) || 0;
+      const f = Number(c.grasas) || 0;
+      const localPhoto = localPhotoByCloudId.get(c.id);
+      if (localPhoto) {
+        return { ...localPhoto, date: c.fecha, slot, name, kcal, p, c: cc, f };
+      }
       return {
         id: c.id, cloudId: c.id, date: c.fecha, slot, name,
-        kcal: Number(c.calorias) || 0,
-        p: Number(c.proteina) || 0,
-        c: Number(c.carbohidratos) || 0,
-        f: Number(c.grasas) || 0,
+        kcal, p, c: cc, f,
         source: "cloud"
       };
     });
