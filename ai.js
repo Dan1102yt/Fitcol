@@ -154,15 +154,17 @@ INSTRUCCIONES:
 1. Identifica QUÉ ES exactamente lo que ves en la foto — sin asumir que es comida colombiana si claramente es otra cosa.
 2. Si ves una hamburguesa, di hamburguesa. Si ves pizza, di pizza. Si ves arepa, di arepa. Sé específico con el nombre real.
 3. Si por el empaque, envoltorio, vasos, logos o el plato/plato en el que está servida reconoces que es de una cadena de comida específica${cadenasConocidas ? ` — en particular alguna de estas, muy comunes en centros comerciales colombianos: ${cadenasConocidas}` : ""} — indícalo en el campo "restaurante". Si no estás razonablemente seguro, deja "restaurante" en null; no adivines.
-4. Estima los macros basándote en lo que VES visualmente — porción, ingredientes visibles, tamaño aproximado. Esta estimación se usa como respaldo si no logramos identificar el plato exacto en nuestra base de datos.
-5. Si la foto es poco clara o no puedes identificar bien, indícalo en el campo "confianza".
+4. Si ves un PRODUCTO EMPACADO/INDUSTRIALIZADO con marca visible en el empaque (ej: un ponqué Gansito, un Chocorramo, una bolsa de Doritos, un Milo, una Coca-Cola) — sea que esté cerrado o ya abierto/mordido — lee el nombre tal como aparece impreso (marca + producto, ej: "Gansito Marinela", "Doritos Nacho Queso") y ponlo en el campo "producto_empacado". Esto es más confiable que estimar sus calorías a ojo, porque después lo buscamos en una base de datos real. Si no es un producto empacado (comida preparada, plato de restaurante, comida casera), deja este campo en null.
+5. Estima los macros basándote en lo que VES visualmente — porción, ingredientes visibles, tamaño aproximado. Esta estimación se usa como respaldo si no logramos identificar el producto/plato exacto en nuestras bases de datos.
+6. Si la foto es poco clara o no puedes identificar bien, indícalo en el campo "confianza".
 
 Si la foto NO contiene comida, devuelve EXCLUSIVAMENTE: {"error":"no_food"}
 
 Si la foto SÍ contiene comida, devuelve EXCLUSIVAMENTE este JSON sin markdown, sin texto adicional:
 {
-  "nombre": "nombre específico y real del plato (ej: Sandwich Subway de pollo, Bandeja paisa, Pizza margarita)",
+  "nombre": "nombre específico y real del plato o producto (ej: Sandwich Subway de pollo, Bandeja paisa, Pizza margarita, Gansito Marinela)",
   "restaurante": "nombre de la cadena si la reconoces con confianza, o null",
+  "producto_empacado": "marca + nombre del producto tal como aparece impreso en el empaque, o null si no es un producto empacado",
   "calorias": número entero,
   "proteina": número en gramos,
   "carbos": número en gramos,
@@ -190,11 +192,31 @@ Si la foto SÍ contiene comida, devuelve EXCLUSIVAMENTE este JSON sin markdown, 
     nota: json.nota || ""
   };
 
-  // Si la IA reconoció el plato (con o sin cadena) y hace match razonable
-  // contra nuestra base de datos de referencia, preferimos ese valor real
-  // sobre la estimación visual — es el mismo principio que usan apps como
-  // Fitia: ancla el resultado a datos conocidos en vez de "adivinar" siempre
-  // desde cero. Si no hay match confiable, se queda la estimación visual tal cual.
+  // Prioridad 1: producto empacado con marca legible (ej. "Gansito
+  // Marinela"). Es el caso más confiable de todos — no es una estimación
+  // de un plato preparado, es un producto específico que casi seguro está
+  // en Open Food Facts con datos reales del empaque.
+  if (json.producto_empacado && typeof buscarProductoEmpacado === "function") {
+    const prod = await buscarProductoEmpacado(json.producto_empacado);
+    if (prod) {
+      return {
+        nombre: prod.nombre,
+        kcal: prod.kcal, p: prod.p, c: prod.c, f: prod.f,
+        porcion: `${prod.porcion_gramos}g (porción de referencia del producto)`,
+        confianza: "alta",
+        nota: [`Ajustado con datos reales de Open Food Facts (${prod.nombre}).`, visual.nota].filter(Boolean).join(" ")
+      };
+    }
+    // No lo encontramos en Open Food Facts — seguimos probando por nombre
+    // de plato normal antes de rendirnos a la estimación visual.
+  }
+
+  // Prioridad 2: si la IA reconoció el plato (con o sin cadena) y hace
+  // match razonable contra nuestra base de datos de referencia, preferimos
+  // ese valor real sobre la estimación visual — es el mismo principio que
+  // usan apps como Fitia: ancla el resultado a datos conocidos en vez de
+  // "adivinar" siempre desde cero. Si no hay match confiable, se queda la
+  // estimación visual tal cual.
   if (typeof findReferenceFoodMatch === "function") {
     const ref = findReferenceFoodMatch(json.nombre, json.restaurante || null);
     if (ref) {

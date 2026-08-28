@@ -1645,13 +1645,17 @@ function renderWorkoutCustom() {
   if (importBtn) importBtn.addEventListener("click", () => openExcelImporter());
   document.querySelectorAll(".cr-activate").forEach(b => b.addEventListener("click", () => {
     state.useCustomRoutine = true; state.activeCustomRoutineId = b.dataset.id; saveState(); views.workout();
+    const r = state.customRoutines.find(c => c.id === b.dataset.id);
+    if (r && r.cloudId && typeof cloudSetRutinaActiva === "function") cloudSetRutinaActiva(r.cloudId);
   }));
   document.querySelectorAll(".cr-edit").forEach(b => b.addEventListener("click", () => openRoutineEditor(b.dataset.id)));
   document.querySelectorAll(".cr-del").forEach(b => b.addEventListener("click", () => {
     if (!confirm("¿Eliminar rutina?")) return;
+    const removed = state.customRoutines.find(c => c.id === b.dataset.id);
     state.customRoutines = state.customRoutines.filter(c => c.id !== b.dataset.id);
     if (state.activeCustomRoutineId === b.dataset.id) { state.activeCustomRoutineId = null; state.useCustomRoutine = false; }
     saveState(); views.workout();
+    if (removed && removed.cloudId && typeof cloudDeleteRutina === "function") cloudDeleteRutina(removed.cloudId);
   }));
   document.getElementById("ce-save").addEventListener("click", () => {
     const name = document.getElementById("ce-name").value.trim();
@@ -1730,6 +1734,22 @@ function openRoutineEditor(routineId) {
         state.customRoutines[idx] = data;
       } else state.customRoutines.push(data);
       saveState(); m.close(); toast("Rutina guardada"); views.workout();
+
+      // Sube la rutina a Supabase para que se vea igual en cualquier
+      // dispositivo — antes "Mis rutinas" solo vivía en este navegador.
+      // Mismo patrón que logMeal: no bloquea el guardado local, y si es una
+      // rutina nueva guardamos el cloudId que devuelve Supabase para poder
+      // editarla/borrarla ahí después.
+      const activa = state.activeCustomRoutineId === data.id;
+      if (data.cloudId && typeof cloudUpdateRutina === "function") {
+        cloudUpdateRutina(data.cloudId, { ...data, activa });
+      } else if (typeof cloudInsertRutina === "function") {
+        Promise.resolve(cloudInsertRutina({ ...data, activa })).then(cloudId => {
+          if (!cloudId) return;
+          const r = state.customRoutines.find(x => x.id === data.id);
+          if (r) { r.cloudId = cloudId; saveState(); }
+        });
+      }
     });
   }
   const m = modal(html()); attachListeners();

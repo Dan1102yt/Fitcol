@@ -34,6 +34,63 @@ function macrosPorPorcion(prod, gramos) {
   };
 }
 
+// Busca un producto EMPACADO específico (ej: "Gansito Marinela", "Doritos
+// nacho") en Open Food Facts y devuelve sus macros reales para una porción
+// sensata — usa el serving_size que reporta Open Food Facts si lo tiene
+// (ej: "50 g"), y si no, cae a 100g. Pensado para analyzeFoodPhoto (ver
+// ai.js): cuando la IA lee la marca/nombre impreso en el empaque de la
+// foto, esto reemplaza su estimación visual por el valor real del
+// producto en vez de que la IA tenga que "adivinar" las calorías de un
+// paquete que ni siquiera está abierto en la foto.
+async function buscarProductoEmpacado(nombreProducto) {
+  if (!nombreProducto) return null;
+  try {
+    // La búsqueda de Open Food Facts es sensible a cuántas palabras le mandes —
+    // "Gansito Marinela" no devuelve nada, pero "Gansito" solo sí. Como no
+    // sabemos si la IA puso la marca antes o después del producto, probamos
+    // variantes cada vez más simples hasta encontrar algo: el texto completo,
+    // sin la primera palabra, sin la última, y cada palabra suelta (de más
+    // larga a más corta, para priorizar la más específica).
+    const palabras = nombreProducto.trim().split(/\s+/).filter(Boolean);
+    const intentos = [nombreProducto];
+    if (palabras.length > 1) {
+      intentos.push(palabras.slice(1).join(" "));       // sin la primera palabra
+      intentos.push(palabras.slice(0, -1).join(" "));    // sin la última palabra
+      palabras.slice().sort((a, b) => b.length - a.length).forEach(w => intentos.push(w));
+    }
+
+    let products = [];
+    for (const intento of intentos) {
+      if (!intento) continue;
+      products = await buscarComida(intento);
+      if (products.length) break;
+    }
+    if (!products.length) return null;
+    const prod = products[0];
+
+    let gramos = 100;
+    const servingSize = prod.serving_size || "";
+    const m = String(servingSize).match(/([\d.,]+)\s*g\b/i);
+    if (m) {
+      const n = parseFloat(m[1].replace(",", "."));
+      if (n > 0) gramos = n;
+    }
+
+    const macros = macrosPorPorcion(prod, gramos);
+    const brand = prod.brands ? prod.brands.split(",")[0].trim() : "";
+    const nombre = (brand && !prod.product_name.toLowerCase().includes(brand.toLowerCase()))
+      ? `${prod.product_name} (${brand})`
+      : prod.product_name;
+
+    return {
+      nombre,
+      kcal: macros.kcal, p: macros.p, c: macros.c, f: macros.f,
+      porcion_gramos: gramos,
+      fuente: "Open Food Facts"
+    };
+  } catch (e) { console.warn("buscarProductoEmpacado:", e); return null; }
+}
+
 function openFoodSearch(slot) {
   const html = `
     <h2>Buscar alimento</h2>

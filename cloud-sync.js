@@ -196,8 +196,73 @@ async function cloudLogChatEvent(tipo) {
   } catch (e) { console.warn(e); }
 }
 
+// ---------- RUTINAS PERSONALIZADAS ----------
+// "Mis rutinas" (openRoutineEditor en app.js) vivía solo en localStorage — una
+// rutina creada en un navegador/celular no se veía en otro dispositivo, y si se
+// borraba el localStorage (o se usaba "Borrar todo") se perdía para siempre sin
+// aviso. Guardamos los días/ejercicios completos como JSON en "dias" para no
+// tener que normalizar una tabla de ejercicios aparte.
+async function cloudInsertRutina(rutina) {
+  if (!cloudAvailable()) return null;
+  try {
+    const { data, error } = await window.supabaseClient.from("rutinas").insert({
+      user_id: window.currentUser.id,
+      nombre: rutina.name,
+      dias: rutina.days,
+      activa: !!rutina.activa
+    }).select("id").single();
+    if (error) { console.warn("cloudInsertRutina:", error.message); return null; }
+    return data ? data.id : null;
+  } catch (e) { console.warn(e); return null; }
+}
+
+async function cloudUpdateRutina(cloudId, rutina) {
+  if (!cloudAvailable() || !cloudId) return;
+  try {
+    const { error } = await window.supabaseClient.from("rutinas").update({
+      nombre: rutina.name,
+      dias: rutina.days,
+      activa: !!rutina.activa,
+      updated_at: new Date().toISOString()
+    }).eq("id", cloudId).eq("user_id", window.currentUser.id);
+    if (error) console.warn("cloudUpdateRutina:", error.message);
+  } catch (e) { console.warn(e); }
+}
+
+async function cloudDeleteRutina(cloudId) {
+  if (!cloudAvailable() || !cloudId) return;
+  try {
+    const { error } = await window.supabaseClient.from("rutinas").delete()
+      .eq("id", cloudId).eq("user_id", window.currentUser.id);
+    if (error) console.warn("cloudDeleteRutina:", error.message);
+  } catch (e) { console.warn(e); }
+}
+
+// Marca esta rutina como activa en la nube y todas las demás como inactivas —
+// evita que dos filas queden con activa=true si el usuario activa una rutina
+// distinta desde dos dispositivos casi al mismo tiempo.
+async function cloudSetRutinaActiva(cloudId) {
+  if (!cloudAvailable() || !cloudId) return;
+  const uid = window.currentUser.id;
+  try {
+    await window.supabaseClient.from("rutinas").update({ activa: false }).eq("user_id", uid).neq("id", cloudId);
+    const { error } = await window.supabaseClient.from("rutinas").update({ activa: true }).eq("id", cloudId).eq("user_id", uid);
+    if (error) console.warn("cloudSetRutinaActiva:", error.message);
+  } catch (e) { console.warn(e); }
+}
+
+async function cloudLoadRutinas() {
+  if (!cloudAvailable()) return [];
+  try {
+    const { data, error } = await window.supabaseClient
+      .from("rutinas").select("*").order("created_at", { ascending: true });
+    if (error) { console.warn(error.message); return []; }
+    return data || [];
+  } catch (e) { console.warn(e); return []; }
+}
+
 // ---------- BORRAR TODO (privacidad / reset de cuenta) ----------
-// Borra las 4 tablas para el usuario actual. Se usa desde "Borrar todo" en Perfil,
+// Borra las tablas para el usuario actual. Se usa desde "Borrar todo" en Perfil,
 // que antes solo limpiaba localStorage y dejaba intacta la copia en la nube.
 async function cloudDeleteAllUserData() {
   if (!cloudAvailable()) return { ok: true, errors: [] };
@@ -207,6 +272,7 @@ async function cloudDeleteAllUserData() {
     { name: "entrenamientos", col: "user_id" },
     { name: "comidas", col: "user_id" },
     { name: "chat_events", col: "user_id" },
+    { name: "rutinas", col: "user_id" },
     { name: "perfiles", col: "id" }
   ];
   const errors = [];
@@ -242,8 +308,8 @@ async function cloudDeleteAllUserData() {
 async function cloudHydrate() {
   if (!cloudAvailable() || typeof state === "undefined") return;
   try {
-    const [perfil, pesos, entrenos, comidas] = await Promise.all([
-      cloudLoadPerfil(), cloudLoadRegistrosPeso(), cloudLoadEntrenamientos(), cloudLoadComidas()
+    const [perfil, pesos, entrenos, comidas, rutinas] = await Promise.all([
+      cloudLoadPerfil(), cloudLoadRegistrosPeso(), cloudLoadEntrenamientos(), cloudLoadComidas(), cloudLoadRutinas()
     ]);
 
     if (perfil) {
@@ -351,6 +417,33 @@ async function cloudHydrate() {
       if (cloudId) meal.cloudId = cloudId;
     }
     state.dietLog = cloudDietLog.concat(pendingMeals);
+
+    // --- Rutinas personalizadas: antes solo vivían en localStorage de un
+    // dispositivo — "no veo mi rutina" al abrir en otro navegador/celular era
+    // exactamente ese problema. Mismo patrón que comidas: las locales llevan
+    // cloudId una vez confirmadas; lo que sea puramente local se sube ahora.
+    const cloudRoutines = rutinas.map(r => ({
+      id: r.id, cloudId: r.id, name: r.nombre, days: r.dias || [], activa: !!r.activa
+    }));
+    const pendingRoutines = (state.customRoutines || []).filter(r => !r.cloudId);
+    for (const rutina of pendingRoutines) {
+      const cloudId = await cloudInsertRutina({ ...rutina, activa: state.activeCustomRoutineId === rutina.id });
+      if (cloudId) rutina.cloudId = cloudId;
+    }
+    state.customRoutines = cloudRoutines.concat(pendingRoutines);
+
+    // ¿Cuál rutina quedó marcada como activa en la nube? Si hay una, manda
+    // sobre lo que hubiera local (así activar una rutina en el celular se
+    // refleja en el PC la próxima vez que abras la app ahí).
+    const activaCloud = cloudRoutines.find(r => r.activa);
+    if (activaCloud) {
+      state.useCustomRoutine = true;
+      state.activeCustomRoutineId = activaCloud.id;
+    } else if (state.activeCustomRoutineId && !state.customRoutines.some(r => r.id === state.activeCustomRoutineId)) {
+      // La rutina que tenías activa ya no existe ni local ni en la nube.
+      state.useCustomRoutine = false;
+      state.activeCustomRoutineId = null;
+    }
 
     saveState();
     if (typeof showView === "function" && typeof currentView !== "undefined") showView(currentView);

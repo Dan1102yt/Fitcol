@@ -118,14 +118,35 @@ ALTER TABLE chat_events ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Solo el dueño" ON chat_events
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
+-- ============ RUTINAS PERSONALIZADAS ============
+-- Antes "Mis rutinas" (Entrenamiento → Mis rutinas → Nueva rutina) solo vivía en
+-- localStorage — por eso una rutina creada en un navegador/celular no se veía en
+-- otro. Guardamos los días/ejercicios completos como JSON en "dias" (es la misma
+-- estructura que ya arma openRoutineEditor en app.js) para no tener que crear una
+-- tabla separada por ejercicio. "activa" marca cuál rutina está en uso — solo una
+-- por usuario debería tener TRUE a la vez (lo garantiza el código, no la tabla).
+CREATE TABLE rutinas (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users NOT NULL,
+  nombre TEXT NOT NULL,
+  dias JSONB NOT NULL,
+  activa BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE rutinas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Solo el dueño" ON rutinas
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
 -- ============ ÍNDICES ÚTILES ============
 CREATE INDEX idx_peso_user_fecha ON registros_peso (user_id, fecha DESC);
 CREATE INDEX idx_entren_user_fecha ON entrenamientos (user_id, fecha DESC);
 CREATE INDEX idx_comidas_user_fecha ON comidas (user_id, fecha DESC);
 CREATE INDEX idx_chatev_user_fecha ON chat_events (user_id, created_at DESC);
+CREATE INDEX idx_rutinas_user ON rutinas (user_id);
 ```
 
-**Si ya tienes las otras 4 tablas creadas y solo necesitas agregar `chat_events`**, corre únicamente el bloque de arriba de `chat_events` (desde `CREATE TABLE chat_events` hasta su índice) — no hace falta rehacer las demás.
+**Si ya tienes las otras tablas creadas y solo necesitas agregar `rutinas`**, corre únicamente ese bloque (desde `CREATE TABLE rutinas` hasta su índice) — no hace falta rehacer las demás.
 
 Verifica en **Table Editor**: deben aparecer las 4 tablas con un candado (RLS habilitado).
 
@@ -179,6 +200,7 @@ GitHub Pages reconstruye en 1-2 min. La app empezará a pedir login automáticam
 7. Agrega una comida desde el buscador de Open Food Facts: aparece en `comidas`.
 8. Importa un Excel desde Entrenamiento → Mis rutinas → "Importar historial Excel". Las filas aparecen en `entrenamientos`.
 9. Manda un mensaje al Asistente IA (o analiza una foto de comida): aparece una fila en `chat_events` con `tipo` "chat" o "foto".
+10. Crea una rutina en Entrenamiento → Mis rutinas → "+ Nueva rutina": aparece una fila en `rutinas`. Ábrela desde otro navegador (o `Ctrl+Shift+R` para simular otro dispositivo): la rutina debe aparecer igual.
 
 ---
 
