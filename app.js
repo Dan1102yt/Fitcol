@@ -1362,7 +1362,7 @@ function renderActiveDay(r, dayIdx) {
       </div>
     </div>
   `;
-  document.querySelectorAll(".set-row").forEach(row => attachSetRowListeners(row));
+  wireRowElements(document);
   document.querySelectorAll(".add-set-btn").forEach(b => b.addEventListener("click", () => addExtraSet(b.dataset.exname, b.dataset.group, b.dataset.equipo, sessionId)));
   document.getElementById("finish-session").addEventListener("click", () => {
     if (state.workouts.find(w => w.date === today && w.dayIndex === dayIdx)) {
@@ -1387,10 +1387,19 @@ function exerciseLogBlock(ex, sessionId) {
   // por fecha + nombre del ejercicio, que es lo que en verdad define "ya hice
   // esto hoy", sin importar bajo qué sessionId haya quedado guardado.
   const today = todayISO();
-  const existingSets = state.setLog.filter(s => s.date === today && s.exerciseName === ex.name);
+  const allToday = state.setLog.filter(s => s.date === today && s.exerciseName === ex.name);
+  // Las "gotas" de un dropset (dropsetStage > 0) no forman su propia fila
+  // numerada — se muestran anidadas bajo el set principal del mismo grupo
+  // (mismo dropsetGroupId, dropsetStage 0). Solo el set principal cuenta
+  // para la numeración "Set 1, 2, 3…".
+  const existingSets = allToday.filter(s => !(s.dropsetGroupId && s.dropsetStage > 0));
   const rows = [];
   for (let i = 0; i < Math.max(setsCount, existingSets.length); i++) {
-    rows.push(setRowHtml(ex, sessionId, i, existingSets[i]));
+    const main = existingSets[i];
+    const drops = main && main.dropsetGroupId
+      ? allToday.filter(s => s.dropsetGroupId === main.dropsetGroupId && s.dropsetStage > 0).sort((a, b) => a.dropsetStage - b.dropsetStage)
+      : [];
+    rows.push(setRowHtml(ex, sessionId, i, main, drops));
   }
   return `
     <div class="exercise-log-block">
@@ -1409,12 +1418,13 @@ function exerciseLogBlock(ex, sessionId) {
   `;
 }
 
-function setRowHtml(ex, sessionId, idx, existing) {
+function setRowHtml(ex, sessionId, idx, existing, drops) {
+  drops = drops || [];
   const unit = (existing && existing.unit) || state.units || "kg";
   const weight = existing ? existing.weight : "";
   const reps = existing ? existing.reps : "";
   const done = !!existing;
-  return `
+  const mainRow = `
     <div class="set-row ${done?"done":""}" data-exname="${escapeHtml(ex.name)}" data-group="${ex.group}" data-equipo="${escapeHtml(ex.equipo || "")}" data-session="${sessionId}" data-idx="${idx}" ${existing ? `data-id="${existing.id}"` : ""}>
       <span class="set-num">${idx + 1}</span>
       <div class="set-weight">
@@ -1428,10 +1438,89 @@ function setRowHtml(ex, sessionId, idx, existing) {
       <button class="set-check ${done?"done":""}" title="Marcar set">✓</button>
     </div>
   `;
+  // Gotas YA guardadas (el set principal ya se marcó con dropset) — se ven y
+  // se editan igual que un set normal ya hecho, solo que anidadas.
+  const savedDropRows = drops.map(d => `
+    <div class="drop-row done" data-exname="${escapeHtml(ex.name)}" data-group="${ex.group}" data-equipo="${escapeHtml(ex.equipo || "")}" data-session="${sessionId}" data-id="${d.id}">
+      <span class="set-num">↳ gota ${d.dropsetStage}</span>
+      <div class="set-weight">
+        <input type="number" step="0.5" class="weight-input" value="${d.weight}" placeholder="0">
+        <select class="unit-select">
+          <option value="kg" ${d.unit==="kg"?"selected":""}>kg</option>
+          <option value="lb" ${d.unit==="lb"?"selected":""}>lb</option>
+        </select>
+      </div>
+      <input type="number" class="reps-input" value="${d.reps}" placeholder="${ex.reps}">
+      <button class="set-check done" title="Marcar gota">✓</button>
+    </div>
+  `).join("");
+  // Mientras el set principal no se haya marcado, se puede tocar "🔻 Añadir
+  // dropset" para abrir uno o más inputs de "gota" — todos se guardan JUNTO
+  // con el set principal al presionar su ✓ (un solo dropsetGroupId nuevo
+  // para todos). Una vez marcado no se puede agregar retroactivamente,
+  // porque "entrenamientos" no tiene hoy una función para editar una fila
+  // ya subida a la nube — más simple y confiable que intentarlo.
+  const pendingUi = done ? "" : `
+    <div class="drop-slots"></div>
+    <button type="button" class="btn btn-sm btn-ghost add-drop-toggle" data-repsph="${escapeHtml(String(ex.reps || ""))}">🔻 Añadir dropset</button>
+  `;
+  return `<div class="set-group">${mainRow}${savedDropRows}${pendingUi}</div>`;
+}
+
+// Agrega un input de "gota" pendiente (sin guardar todavía) debajo del set
+// principal — se llena el peso reducido + reps y se guarda junto con el set
+// principal cuando se presiona su ✓.
+function addDropSlot(btn) {
+  const group = btn.closest(".set-group");
+  const slots = group ? group.querySelector(".drop-slots") : null;
+  if (!slots) return;
+  const stage = slots.children.length + 1;
+  const unit = state.units || "kg";
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = `
+    <div class="drop-row drop-slot">
+      <span class="set-num">↳ gota ${stage}</span>
+      <div class="set-weight">
+        <input type="number" step="0.5" class="weight-input" placeholder="0">
+        <select class="unit-select">
+          <option value="kg" ${unit==="kg"?"selected":""}>kg</option>
+          <option value="lb" ${unit==="lb"?"selected":""}>lb</option>
+        </select>
+      </div>
+      <input type="number" class="reps-input" placeholder="${escapeHtml(btn.dataset.repsph || "")}">
+      <button type="button" class="drop-remove" title="Quitar esta gota">✕</button>
+    </div>
+  `;
+  const row = wrapper.firstElementChild;
+  row.querySelector(".drop-remove").addEventListener("click", () => {
+    row.remove();
+    Array.from(slots.children).forEach((el, i) => {
+      el.querySelector(".set-num").textContent = `↳ gota ${i + 1}`;
+    });
+  });
+  slots.appendChild(row);
+}
+
+// Conecta los listeners de todas las filas de set/gota y botones "Añadir
+// dropset" dentro de container que todavía no tengan listener (data-wired) —
+// se puede llamar sobre document entero o sobre un contenedor puntual sin
+// riesgo de duplicar listeners en filas ya conectadas antes.
+function wireRowElements(container) {
+  container.querySelectorAll(".set-row, .drop-row").forEach(row => {
+    if (row.dataset.wired) return;
+    row.dataset.wired = "1";
+    attachSetRowListeners(row);
+  });
+  container.querySelectorAll(".add-drop-toggle").forEach(btn => {
+    if (btn.dataset.wired) return;
+    btn.dataset.wired = "1";
+    btn.addEventListener("click", () => addDropSlot(btn));
+  });
 }
 
 function attachSetRowListeners(row) {
   const check = row.querySelector(".set-check");
+  if (!check) return; // gotas pendientes sin guardar: no tienen check propio
   check.addEventListener("click", () => {
     const isBodyweight = row.dataset.equipo === "peso corporal";
     const w = parseFloat(row.querySelector(".weight-input").value) || 0;
@@ -1447,20 +1536,61 @@ function attachSetRowListeners(row) {
     if (id) {
       const item = state.setLog.find(s => s.id === id);
       if (item) { item.weight = w; item.reps = r; item.unit = u; }
-    } else {
-      const item = { id: uid(), date: todayISO(), sessionId: row.dataset.session, exerciseName: row.dataset.exname, group: row.dataset.group, weight: w, reps: r, unit: u, synced: false };
-      state.setLog.push(item);
-      row.dataset.id = item.id;
-      // "synced" queda en false hasta que el insert a Supabase confirme —
-      // así cloudHydrate() sabe que este set todavía no debe pisarse si la
-      // app se cierra antes de que la petición termine (ver cloud-sync.js).
-      if (typeof cloudInsertSet === "function") {
-        Promise.resolve(cloudInsertSet(item)).then(ok => { if (ok) { item.synced = true; saveState(); } });
-      }
+      state.units = u; saveState();
+      row.classList.add("done"); check.classList.add("done");
+      toast("Set guardado");
+      if (typeof gamiOnActivity === "function") gamiOnActivity("workout");
+      return;
     }
+
+    // Set nuevo. Si el usuario agregó "gotas" (🔻 Añadir dropset) antes de
+    // marcar, las guardamos todas juntas con un dropsetGroupId compartido —
+    // una sola operación, en vez de depender de poder "editar" en la nube
+    // un set que ya se insertó.
+    const group = row.closest(".set-group");
+    const slots = group ? group.querySelector(".drop-slots") : null;
+    const dropInputs = slots ? Array.from(slots.children).map(dr => ({
+      w: parseFloat(dr.querySelector(".weight-input").value) || 0,
+      r: parseInt(dr.querySelector(".reps-input").value),
+      u: dr.querySelector(".unit-select").value,
+      el: dr
+    })).filter(d => d.r && (isBodyweight || d.w)) : []; // gotas incompletas (sin reps, o sin peso salvo peso corporal) se ignoran
+
+    const groupId = dropInputs.length ? uid() : null;
+    const item = { id: uid(), date: todayISO(), sessionId: row.dataset.session, exerciseName: row.dataset.exname, group: row.dataset.group, weight: w, reps: r, unit: u, synced: false };
+    if (groupId) { item.dropsetGroupId = groupId; item.dropsetStage = 0; }
+    state.setLog.push(item);
+    row.dataset.id = item.id;
+    // "synced" queda en false hasta que el insert a Supabase confirme —
+    // así cloudHydrate() sabe que este set todavía no debe pisarse si la
+    // app se cierra antes de que la petición termine (ver cloud-sync.js).
+    if (typeof cloudInsertSet === "function") {
+      Promise.resolve(cloudInsertSet(item)).then(ok => { if (ok) { item.synced = true; saveState(); } });
+    }
+
+    dropInputs.forEach((d, i) => {
+      const dItem = { id: uid(), date: todayISO(), sessionId: row.dataset.session, exerciseName: row.dataset.exname, group: row.dataset.group, weight: d.w, reps: d.r, unit: d.u, synced: false, dropsetGroupId: groupId, dropsetStage: i + 1 };
+      state.setLog.push(dItem);
+      if (typeof cloudInsertSet === "function") {
+        Promise.resolve(cloudInsertSet(dItem)).then(ok => { if (ok) { dItem.synced = true; saveState(); } });
+      }
+      d.el.classList.add("done");
+      d.el.dataset.id = dItem.id;
+      const removeBtn = d.el.querySelector(".drop-remove");
+      if (removeBtn) removeBtn.outerHTML = `<button class="set-check done" title="Gota guardada">✓</button>`;
+    });
+
+    // Ya se guardó todo — quita cualquier slot que haya quedado vacío/sin
+    // usar y el botón de "añadir dropset" (ya no se puede seguir agregando).
+    if (group) {
+      if (slots) Array.from(slots.children).forEach(el => { if (!el.classList.contains("done")) el.remove(); });
+      const toggle = group.querySelector(".add-drop-toggle");
+      if (toggle) toggle.remove();
+    }
+
     state.units = u; saveState();
     row.classList.add("done"); check.classList.add("done");
-    toast("Set guardado");
+    toast(groupId ? `Dropset guardado (${1 + dropInputs.length} pasos)` : "Set guardado");
     if (typeof gamiOnActivity === "function") gamiOnActivity("workout");
   });
   ["weight-input", "reps-input", "unit-select"].forEach(cls => {
@@ -1483,10 +1613,9 @@ function addExtraSet(exname, group, equipo, sessionId) {
   const table = block.querySelector(".set-table");
   const idx = block.querySelectorAll(".set-row").length;
   const wrapper = document.createElement("div");
-  wrapper.innerHTML = setRowHtml({ name: exname, group, equipo, reps: "" }, sessionId, idx, null);
-  const row = wrapper.firstElementChild;
-  table.appendChild(row);
-  attachSetRowListeners(row);
+  wrapper.innerHTML = setRowHtml({ name: exname, group, equipo, reps: "" }, sessionId, idx, null, []);
+  Array.from(wrapper.children).forEach(el => table.appendChild(el));
+  wireRowElements(table);
 }
 
 function openExtraExercisePicker(sessionId) {
@@ -1520,7 +1649,7 @@ function openExtraExercisePicker(sessionId) {
     wrapper.innerHTML = exerciseLogBlock(fakeEx, sessionId);
     const finishBtn = container.querySelector("#finish-session").parentElement;
     container.querySelector(".workout-day").insertBefore(wrapper.firstElementChild, finishBtn);
-    container.querySelectorAll(".set-row").forEach(row => attachSetRowListeners(row));
+    wireRowElements(container);
     container.querySelectorAll(".add-set-btn").forEach(b => b.addEventListener("click", () => addExtraSet(b.dataset.exname, b.dataset.group, b.dataset.equipo, sessionId)));
     m.close();
   }));

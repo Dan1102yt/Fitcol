@@ -85,6 +85,16 @@ async function cloudDeleteRegistroPeso(fecha) {
 async function cloudInsertSet(set) {
   if (!cloudAvailable()) return false;
   const peso_kg = set.unit === "lb" ? lbToKg(set.weight) : set.weight;
+  // "entrenamientos" no tiene columnas para dropset ni una función para
+  // editar una fila ya subida — así que un set de dropset (principal + cada
+  // "gota") se manda TODO en el insert original, codificado en "notas" como
+  // "DROPSET g=<id> s=<etapa>" (mismo patrón que usa cloudInsertComida con
+  // el slot de la comida). cloudHydrate() lo vuelve a leer al reconstruir
+  // state.setLog. Ver attachSetRowListeners en app.js: nunca se llama a esto
+  // para "agregar" una gota después de que el set principal ya se guardó.
+  const notas = [];
+  if (set.unit === "lb") notas.push(`Ingresado en lb: ${set.weight}`);
+  if (set.dropsetGroupId) notas.push(`DROPSET g=${set.dropsetGroupId} s=${set.dropsetStage || 0}`);
   try {
     const { error } = await window.supabaseClient.from("entrenamientos").insert({
       user_id: window.currentUser.id,
@@ -93,7 +103,7 @@ async function cloudInsertSet(set) {
       series: 1,
       repeticiones: set.reps,
       peso_kg,
-      notas: set.unit === "lb" ? `Ingresado en lb: ${set.weight}` : null
+      notas: notas.length ? notas.join(" | ") : null
     });
     if (error) { console.warn("cloudInsertSet:", error.message); return false; }
     return true;
@@ -350,6 +360,13 @@ async function cloudHydrate() {
     }
 
     // --- Entrenamientos: los sets locales llevan flag synced (true tras cloudInsertSet ok) ---
+    // "DROPSET g=<id> s=<etapa>" en notas (ver cloudInsertSet) identifica las
+    // gotas de un dropset — se decodifica de vuelta a dropsetGroupId/Stage.
+    const dropsetFromNotas = (notas) => {
+      if (!notas) return null;
+      const m = notas.match(/DROPSET g=([^\s|]+) s=(\d+)/);
+      return m ? { dropsetGroupId: m[1], dropsetStage: parseInt(m[2], 10) } : null;
+    };
     const cloudSetLog = entrenos.map(e => ({
       id: e.id, date: e.fecha,
       sessionId: `${e.fecha}-cloud`,
@@ -358,15 +375,18 @@ async function cloudHydrate() {
       weight: Number(e.peso_kg) || 0,
       unit: "kg",
       reps: e.repeticiones || 0,
-      synced: true
+      synced: true,
+      ...(dropsetFromNotas(e.notas) || {})
     }));
     // Antes de reintentar el insert de un set marcado "no sincronizado", nos
     // fijamos si ya hay en la nube una fila con la misma fecha/ejercicio/peso/
     // reps — puede pasar que el insert original SÍ haya llegado a Supabase
     // pero la app se haya cerrado antes de que la respuesta marcara el set
     // como synced localmente. Sin este chequeo, cada reintento crearía una
-    // fila duplicada en "entrenamientos".
-    const setKey = s => `${s.date}|${s.exerciseName}|${s.weight}|${s.reps}`;
+    // fila duplicada en "entrenamientos". Se incluye dropsetGroupId/Stage
+    // para no confundir el set principal de un dropset con una de sus gotas
+    // (mismo peso/reps es posible, aunque poco común).
+    const setKey = s => `${s.date}|${s.exerciseName}|${s.weight}|${s.reps}|${s.dropsetGroupId || ""}|${s.dropsetStage || 0}`;
     const cloudSetKeys = new Set(cloudSetLog.map(setKey));
     const pendingSets = (state.setLog || []).filter(s => !s.synced);
     const stillPendingSets = [];

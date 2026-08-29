@@ -930,6 +930,75 @@ a { color: var(--accent); text-decoration: none; }
 
 .add-set-btn { margin-top: 6px; }
 
+/* Dropset: un set principal + una o más "gotas" (peso reducido, mismo
+   grupo). .set-group envuelve el set principal, sus gotas ya guardadas
+   y (mientras no se marque) los inputs pendientes + el botón para
+   agregar más. */
+.set-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.drop-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 2fr) minmax(0, 1.1fr) 38px;
+  gap: 8px;
+  align-items: center;
+  background: var(--bg-elev);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  margin-left: 16px;
+  transition: var(--transition);
+}
+.drop-row.done {
+  background: rgba(212, 160, 23, 0.06);
+  border-color: rgba(212, 160, 23, 0.35);
+}
+.drop-row .set-num {
+  text-align: center;
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.drop-row input,
+.drop-row select {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 7px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  min-width: 0;
+  width: 100%;
+}
+.drop-row input:focus,
+.drop-row select:focus { border-color: var(--accent); }
+.drop-remove {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 15px;
+  font-weight: 700;
+  transition: var(--transition);
+}
+.drop-remove:hover { color: var(--danger); border-color: var(--danger); }
+.drop-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.add-drop-toggle {
+  align-self: flex-start;
+  margin-left: 16px;
+  font-size: 12px;
+  padding: 5px 10px;
+}
+
 .custom-routine-row {
   display: flex;
   justify-content: space-between;
@@ -1014,17 +1083,18 @@ a { color: var(--accent); text-decoration: none; }
 
 @media (max-width: 900px) {
   .chat-card { height: calc(100vh - 220px); }
-  .set-table-head, .set-row { grid-template-columns: 30px minmax(0, 2fr) minmax(0, 1.1fr) 36px; gap: 6px; }
+  .set-table-head, .set-row, .drop-row { grid-template-columns: 30px minmax(0, 2fr) minmax(0, 1.1fr) 36px; gap: 6px; }
   .set-weight .unit-select { flex-basis: 42px; width: 42px; padding: 7px 2px; }
-  .set-check { width: 34px; height: 34px; }
+  .set-check, .drop-remove { width: 34px; height: 34px; }
 }
 @media (max-width: 480px) {
-  .set-table-head, .set-row { grid-template-columns: 26px minmax(0, 2fr) minmax(0, 1.05fr) 32px; gap: 5px; font-size: 12px; }
+  .set-table-head, .set-row, .drop-row { grid-template-columns: 26px minmax(0, 2fr) minmax(0, 1.05fr) 32px; gap: 5px; font-size: 12px; }
   .set-table-head { font-size: 10px; padding: 0 2px; }
   .set-weight { gap: 3px; }
   .set-weight .unit-select { flex-basis: 38px; width: 38px; }
-  .set-row input, .set-row select { padding: 6px 4px; font-size: 12px; }
-  .set-check { width: 30px; height: 30px; font-size: 14px; }
+  .set-row input, .set-row select, .drop-row input, .drop-row select { padding: 6px 4px; font-size: 12px; }
+  .set-check, .drop-remove { width: 30px; height: 30px; font-size: 14px; }
+  .drop-row, .add-drop-toggle { margin-left: 10px; }
   .meal-actions .btn { font-size: 11px; padding: 6px 10px; }
 }
 
