@@ -999,6 +999,38 @@ a { color: var(--accent); text-decoration: none; }
   padding: 5px 10px;
 }
 
+/* Reordenar ejercicios en el editor de rutinas ("Mis rutinas"): arrastrar
+   con el mouse (.re-ex[draggable]) o los botones ▲▼ (celular / accesible). */
+.re-ex-handle {
+  cursor: grab;
+  color: var(--text-dim);
+  font-size: 16px;
+  padding: 0 2px;
+  user-select: none;
+  flex-shrink: 0;
+}
+.re-ex-dragging { opacity: 0.4; }
+.re-ex-dragover { border-top-color: var(--accent) !important; }
+.re-ex-move {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.re-ex-move button {
+  width: 24px;
+  height: 20px;
+  padding: 0;
+  font-size: 10px;
+  line-height: 1;
+  border-radius: 4px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.re-ex-move button:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.re-ex-move button:disabled { opacity: 0.3; cursor: default; }
+
 .custom-routine-row {
   display: flex;
   justify-content: space-between;

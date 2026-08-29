@@ -1805,20 +1805,26 @@ function openRoutineEditor(routineId) {
   const data = editing ? structuredClone(editing) : { id: uid(), name: "", days: [{ label: "Día 1", muscleGroups: [], exercises: [] }] };
 
   function dayHtml(d, di) {
+    const lastEi = d.exercises.length - 1;
     return `
       <div class="re-day" data-di="${di}" style="border:1px solid var(--border); border-radius:10px; padding:12px; margin-top:10px;">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
           <input type="text" class="re-day-label" value="${escapeHtml(d.label)}" style="background:transparent; border:none; color:var(--text); font-weight:600; font-size:15px; flex:1;">
           <button class="btn btn-sm btn-danger re-del-day">Eliminar día</button>
         </div>
-        <div style="margin-bottom:8px;">
+        <div class="re-ex-list" style="margin-bottom:8px;">
           ${d.exercises.map((ex, ei) => `
-            <div class="re-ex" data-ei="${ei}" style="display:flex; gap:8px; align-items:center; padding:6px 0; border-bottom:1px solid var(--border);">
-              <div style="flex:1;">
+            <div class="re-ex" data-ei="${ei}" draggable="true" style="display:flex; gap:8px; align-items:center; padding:6px 0; border-bottom:1px solid var(--border); border-top:2px solid transparent;">
+              <span class="re-ex-handle" title="Arrastra para reordenar">⠿</span>
+              <div style="flex:1; min-width:0;">
                 <div style="font-weight:500">${escapeHtml(ex.name)}</div>
                 <div class="card-meta">${ex.group} · ${ex.sets} series · ${ex.reps} reps · descanso ${ex.rest}</div>
               </div>
-              <button class="btn btn-sm re-del-ex">×</button>
+              <div class="re-ex-move">
+                <button type="button" class="re-move-up" draggable="false" title="Subir" ${ei===0?"disabled":""}>▲</button>
+                <button type="button" class="re-move-down" draggable="false" title="Bajar" ${ei===lastEi?"disabled":""}>▼</button>
+              </div>
+              <button class="btn btn-sm re-del-ex" draggable="false">×</button>
             </div>
           `).join("")}
         </div>
@@ -1852,7 +1858,48 @@ function openRoutineEditor(routineId) {
       de.querySelector(".re-add-ex").addEventListener("click", () => openExerciseChooser(ex => { data.days[di].exercises.push(ex); refresh(); }));
       de.querySelectorAll(".re-ex").forEach(exEl => {
         const ei = parseInt(exEl.dataset.ei);
-        exEl.querySelector(".re-del-ex").addEventListener("click", () => { data.days[di].exercises.splice(ei, 1); refresh(); });
+        const arr = data.days[di].exercises;
+        exEl.querySelector(".re-del-ex").addEventListener("click", () => { arr.splice(ei, 1); refresh(); });
+        // Reordenar sin arrastrar (funciona en celular, donde el drag & drop
+        // nativo de abajo no siempre responde bien al toque).
+        const upBtn = exEl.querySelector(".re-move-up");
+        const downBtn = exEl.querySelector(".re-move-down");
+        if (upBtn) upBtn.addEventListener("click", () => {
+          if (ei === 0) return;
+          [arr[ei - 1], arr[ei]] = [arr[ei], arr[ei - 1]];
+          refresh();
+        });
+        if (downBtn) downBtn.addEventListener("click", () => {
+          if (ei >= arr.length - 1) return;
+          [arr[ei + 1], arr[ei]] = [arr[ei], arr[ei + 1]];
+          refresh();
+        });
+        // Arrastrar y soltar (mouse/trackpad) para reordenar los ejercicios
+        // del día en el orden que el usuario quiera — pidió justo esto:
+        // poder "agarrar" un ejercicio y moverlo. Al soltar, se reordena el
+        // array real y se vuelve a dibujar todo (refresh) para que los
+        // índices y listeners queden sincronizados con el nuevo orden.
+        exEl.addEventListener("dragstart", e => {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", String(ei));
+          exEl.classList.add("re-ex-dragging");
+        });
+        exEl.addEventListener("dragend", () => exEl.classList.remove("re-ex-dragging"));
+        exEl.addEventListener("dragover", e => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          exEl.classList.add("re-ex-dragover");
+        });
+        exEl.addEventListener("dragleave", () => exEl.classList.remove("re-ex-dragover"));
+        exEl.addEventListener("drop", e => {
+          e.preventDefault();
+          exEl.classList.remove("re-ex-dragover");
+          const fromEi = parseInt(e.dataTransfer.getData("text/plain"));
+          if (isNaN(fromEi) || fromEi === ei) return;
+          const [moved] = arr.splice(fromEi, 1);
+          arr.splice(ei, 0, moved);
+          refresh();
+        });
       });
     });
     m.root.querySelector("#re-save").addEventListener("click", () => {
