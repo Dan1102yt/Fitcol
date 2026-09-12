@@ -95,6 +95,12 @@ async function cloudInsertSet(set) {
   const notas = [];
   if (set.unit === "lb") notas.push(`Ingresado en lb: ${set.weight}`);
   if (set.dropsetGroupId) notas.push(`DROPSET g=${set.dropsetGroupId} s=${set.dropsetStage || 0}`);
+  // Cardio (bicicleta estática, aire, escaleras eléctricas, trotar...) tampoco
+  // tiene columnas propias — se guarda como un set más (peso 0, reps=minutos)
+  // con el tipo/intervalos codificados en "notas". cloudHydrate() los
+  // decodifica de vuelta a cardioType/cardioDuration/cardioIntervals.
+  if (set.cardioType) notas.push(`CARDIO tipo=${encodeURIComponent(set.cardioType)} dur=${set.cardioDuration || 0} intervalos=${set.cardioIntervals ? "si" : "no"}`);
+  if (set.notas) notas.push(`nota=${encodeURIComponent(set.notas)}`);
   try {
     const { error } = await window.supabaseClient.from("entrenamientos").insert({
       user_id: window.currentUser.id,
@@ -367,6 +373,20 @@ async function cloudHydrate() {
       const m = notas.match(/DROPSET g=([^\s|]+) s=(\d+)/);
       return m ? { dropsetGroupId: m[1], dropsetStage: parseInt(m[2], 10) } : null;
     };
+    // "CARDIO tipo=<encoded> dur=<min> intervalos=si|no" (ver cloudInsertSet).
+    const cardioFromNotas = (notas) => {
+      if (!notas) return null;
+      const m = notas.match(/CARDIO tipo=(\S+) dur=(\d+) intervalos=(si|no)/);
+      return m ? { cardioType: decodeURIComponent(m[1]), cardioDuration: parseInt(m[2], 10), cardioIntervals: m[3] === "si" } : null;
+    };
+    // Nota libre del usuario (detalle de intervalos, comentario del set, etc.)
+    // codificada como "nota=<encoded>" para no perderla junto con las demás
+    // etiquetas de este mismo campo (unidad lb, dropset, cardio).
+    const notaFromNotas = (notas) => {
+      if (!notas) return null;
+      const m = notas.match(/nota=([^|]*)/);
+      return m ? decodeURIComponent(m[1].trim()) : null;
+    };
     const cloudSetLog = entrenos.map(e => ({
       id: e.id, date: e.fecha,
       sessionId: `${e.fecha}-cloud`,
@@ -376,7 +396,9 @@ async function cloudHydrate() {
       unit: "kg",
       reps: e.repeticiones || 0,
       synced: true,
-      ...(dropsetFromNotas(e.notas) || {})
+      ...(dropsetFromNotas(e.notas) || {}),
+      ...(cardioFromNotas(e.notas) || {}),
+      ...(notaFromNotas(e.notas) ? { notas: notaFromNotas(e.notas) } : {})
     }));
     // Antes de reintentar el insert de un set marcado "no sincronizado", nos
     // fijamos si ya hay en la nube una fila con la misma fecha/ejercicio/peso/

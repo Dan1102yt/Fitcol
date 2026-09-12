@@ -97,6 +97,15 @@ function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(
 // Fecha actualmente seleccionada en la vista Dieta (no se persiste: cada recarga vuelve a hoy)
 let _dietDate = "";
 function diaSel() { if (!_dietDate) _dietDate = todayISO(); return _dietDate; }
+// El sessionId de un día de entrenamiento siempre se construye como
+// "<fecha ISO>-d<indice>" (ver renderActiveDay). Extraerla de ahí evita tener
+// que pasar la fecha seleccionada como parámetro extra por media docena de
+// funciones (exerciseLogBlock, setRowHtml, addExtraSet, openExtraExercisePicker...).
+function sessionDateOf(sessionId) {
+  const m = String(sessionId || "").match(/^(\d{4}-\d{2}-\d{2})-d\d+/);
+  return m ? m[1] : todayISO();
+}
+const CARDIO_TYPES = ["Bicicleta estática", "Aire", "Escaleras eléctricas (gym)", "Trotar"];
 
 function toast(msg, ms = 2200) {
   const el = document.getElementById("toast");
@@ -1325,8 +1334,28 @@ function renderWorkoutToday(r) {
   const week = state.workouts.filter(w => { const [y,m,d]=w.date.split('-').map(Number); return new Date(y,m-1,d) >= startOfWeek(new Date()); });
   const todayIdx = week.length % r.days.length;
   state._wActiveDay = state._wActiveDay ?? todayIdx;
+  const trainDate = state._trainDate || todayISO();
+  const esHoyTrain = trainDate === todayISO();
+  const cardioToday = state.setLog.filter(s => s.date === trainDate && s.cardioType)
+    .slice().sort((a, b) => (a.id < b.id ? 1 : -1));
 
   tabEl.innerHTML = `
+    <div class="card" style="margin-bottom: 14px; display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
+      <div class="field" style="margin:0; flex:1 1 150px;"><label>Fecha de la sesión</label><input type="date" id="train-date" value="${trainDate}" max="${todayISO()}"></div>
+      ${!esHoyTrain ? `<button class="btn btn-sm" id="train-today" style="flex:0 0 auto;">Ir a hoy</button>` : ""}
+      <span class="card-meta" style="padding-bottom:10px;">${esHoyTrain ? "Registrando hoy" : "Registrando " + formatDate(trainDate)}</span>
+    </div>
+
+    <div class="card" style="margin-bottom: 14px;">
+      <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+        <span>Cardio</span>
+        <button class="btn btn-sm" id="add-cardio">+ Registrar cardio</button>
+      </div>
+      ${cardioToday.length === 0
+        ? `<p class="card-meta" style="margin-top:8px;">Sin cardio registrado ${esHoyTrain ? "hoy" : "este día"}.</p>`
+        : `<div class="diet-log-list" style="margin-top:8px;">${cardioToday.map(cardioRowHtml).join("")}</div>`}
+    </div>
+
     <div class="card" style="margin-bottom: 14px;">
       <div class="card-title">Selecciona el día a entrenar</div>
       <div class="pill-group" id="day-picker">
@@ -1335,6 +1364,14 @@ function renderWorkoutToday(r) {
     </div>
     <div id="active-day"></div>
   `;
+  document.getElementById("train-date").addEventListener("change", e => {
+    state._trainDate = e.target.value || todayISO();
+    saveState();
+    renderWorkoutToday(r);
+  });
+  const trainTodayBtn = document.getElementById("train-today");
+  if (trainTodayBtn) trainTodayBtn.addEventListener("click", () => { state._trainDate = todayISO(); saveState(); renderWorkoutToday(r); });
+  document.getElementById("add-cardio").addEventListener("click", () => openCardioModal(trainDate));
   document.querySelectorAll("#day-picker .pill").forEach(b => b.addEventListener("click", () => {
     state._wActiveDay = parseInt(b.dataset.i);
     renderWorkoutToday(r);
@@ -1342,9 +1379,93 @@ function renderWorkoutToday(r) {
   renderActiveDay(r, state._wActiveDay);
 }
 
+function cardioRowHtml(c) {
+  return `
+    <div class="diet-log-row">
+      <div>
+        <div style="font-weight:500">${escapeHtml(c.cardioType)}</div>
+        <div class="card-meta">${c.cardioIntervals ? "Intervalos" : "Continuo"}${c.notas ? " · " + escapeHtml(c.notas) : ""}</div>
+      </div>
+      <div class="ex-meta"><strong>${c.cardioDuration || c.reps || 0}</strong> min</div>
+    </div>
+  `;
+}
+
+// Modal para registrar cardio (bicicleta estática, aire, escaleras eléctricas,
+// trotar, u "otro" a mano) con duración total y, si aplica, detalle de
+// intervalos. Se guarda como un set más en "entrenamientos" (peso 0, reps =
+// minutos) para no requerir una tabla nueva en Supabase — el tipo/duración/
+// intervalos van codificados en "notas" (ver cloudInsertSet/cloudHydrate).
+function openCardioModal(dateForEntry) {
+  const html = `
+    <h2>Registrar cardio</h2>
+    <div class="field">
+      <label>Tipo de cardio</label>
+      <select id="cm-tipo">
+        ${CARDIO_TYPES.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("")}
+        <option value="__otro__">Otro…</option>
+      </select>
+    </div>
+    <div class="field" id="cm-otro-wrap" style="display:none;">
+      <label>¿Cuál?</label>
+      <input type="text" id="cm-otro" placeholder="ej: Remo, elíptica, natación...">
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Duración total (min) *</label><input type="number" id="cm-duracion" min="1" placeholder="ej: 30" required></div>
+      <div class="field" style="display:flex; align-items:end;">
+        <label style="display:flex; align-items:center; gap:6px; font-weight:normal; margin-bottom:8px;">
+          <input type="checkbox" id="cm-intervalos"> Hice intervalos
+        </label>
+      </div>
+    </div>
+    <div class="field"><label>Notas (opcional)</label><textarea id="cm-notas" rows="2" placeholder="ej: 8x1min fuerte / 1min suave, o cualquier detalle"></textarea></div>
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <button class="btn btn-primary btn-block" id="cm-save">Guardar cardio</button>
+      <button class="btn btn-block" id="cm-cancel">Cancelar</button>
+    </div>
+  `;
+  const m = modal(html);
+  m.root.querySelector("#cm-cancel").addEventListener("click", m.close);
+  const tipoSel = m.root.querySelector("#cm-tipo");
+  const otroWrap = m.root.querySelector("#cm-otro-wrap");
+  tipoSel.addEventListener("change", () => { otroWrap.style.display = tipoSel.value === "__otro__" ? "block" : "none"; });
+
+  m.root.querySelector("#cm-save").addEventListener("click", () => {
+    let tipo = tipoSel.value;
+    if (tipo === "__otro__") {
+      tipo = m.root.querySelector("#cm-otro").value.trim();
+      if (!tipo) { toast("Indica qué tipo de cardio hiciste."); return; }
+    }
+    const duracion = parseInt(m.root.querySelector("#cm-duracion").value);
+    if (!duracion || duracion <= 0) { toast("Indica la duración en minutos."); return; }
+    const intervalos = m.root.querySelector("#cm-intervalos").checked;
+    const notas = m.root.querySelector("#cm-notas").value.trim();
+
+    const item = {
+      id: uid(), date: dateForEntry, sessionId: `${dateForEntry}-cardio`,
+      exerciseName: tipo, group: "Cardio",
+      weight: 0, reps: duracion, unit: "kg", synced: false,
+      cardioType: tipo, cardioDuration: duracion, cardioIntervals: intervalos,
+      notas: notas || null
+    };
+    state.setLog.push(item);
+    if (typeof cloudInsertSet === "function") {
+      Promise.resolve(cloudInsertSet(item)).then(ok => { if (ok) { item.synced = true; saveState(); } });
+    }
+    saveState();
+    toast("Cardio registrado");
+    m.close();
+    if (typeof gamiOnActivity === "function") gamiOnActivity("workout");
+    views.workout();
+  });
+}
+
 function renderActiveDay(r, dayIdx) {
   const day = r.days[dayIdx]; if (!day) return;
-  const today = todayISO();
+  // "today" aquí es la fecha SELECCIONADA en el picker de "Sesión de hoy"
+  // (por defecto, hoy) — así se puede registrar/editar una sesión de un día
+  // anterior que no se alcanzó a marcar cuando tocaba.
+  const today = state._trainDate || todayISO();
   const sessionId = `${today}-d${dayIdx}`;
   const containerEl = document.getElementById("active-day");
   containerEl.innerHTML = `
@@ -1386,7 +1507,10 @@ function exerciseLogBlock(ex, sessionId) {
   // parecía que "no se guardaba" aunque el dato sí existía. Ahora se matchea
   // por fecha + nombre del ejercicio, que es lo que en verdad define "ya hice
   // esto hoy", sin importar bajo qué sessionId haya quedado guardado.
-  const today = todayISO();
+  // "today" se deriva del sessionId (que ya trae la fecha seleccionada en el
+  // picker de "Sesión de hoy") en vez de tomar siempre la fecha real de hoy —
+  // así se puede ver/registrar retroactivamente un día anterior.
+  const today = sessionDateOf(sessionId);
   const allToday = state.setLog.filter(s => s.date === today && s.exerciseName === ex.name);
   // Las "gotas" de un dropset (dropsetStage > 0) no forman su propia fila
   // numerada — se muestran anidadas bajo el set principal del mismo grupo
@@ -1425,7 +1549,7 @@ function setRowHtml(ex, sessionId, idx, existing, drops) {
   const reps = existing ? existing.reps : "";
   const done = !!existing;
   const mainRow = `
-    <div class="set-row ${done?"done":""}" data-exname="${escapeHtml(ex.name)}" data-group="${ex.group}" data-equipo="${escapeHtml(ex.equipo || "")}" data-session="${sessionId}" data-idx="${idx}" ${existing ? `data-id="${existing.id}"` : ""}>
+    <div class="set-row ${done?"done":""}" data-exname="${escapeHtml(ex.name)}" data-group="${ex.group}" data-equipo="${escapeHtml(ex.equipo || "")}" data-session="${sessionId}" data-date="${sessionDateOf(sessionId)}" data-idx="${idx}" ${existing ? `data-id="${existing.id}"` : ""}>
       <span class="set-num">${idx + 1}</span>
       <div class="set-weight">
         <input type="number" step="0.5" class="weight-input" value="${weight}" placeholder="0">
@@ -1557,7 +1681,9 @@ function attachSetRowListeners(row) {
     })).filter(d => d.r && (isBodyweight || d.w)) : []; // gotas incompletas (sin reps, o sin peso salvo peso corporal) se ignoran
 
     const groupId = dropInputs.length ? uid() : null;
-    const item = { id: uid(), date: todayISO(), sessionId: row.dataset.session, exerciseName: row.dataset.exname, group: row.dataset.group, weight: w, reps: r, unit: u, synced: false };
+    // La fecha viene de data-date (la fecha seleccionada en "Sesión de hoy"),
+    // no de todayISO(), para poder registrar retroactivamente un día anterior.
+    const item = { id: uid(), date: row.dataset.date || todayISO(), sessionId: row.dataset.session, exerciseName: row.dataset.exname, group: row.dataset.group, weight: w, reps: r, unit: u, synced: false };
     if (groupId) { item.dropsetGroupId = groupId; item.dropsetStage = 0; }
     state.setLog.push(item);
     row.dataset.id = item.id;
@@ -1569,7 +1695,7 @@ function attachSetRowListeners(row) {
     }
 
     dropInputs.forEach((d, i) => {
-      const dItem = { id: uid(), date: todayISO(), sessionId: row.dataset.session, exerciseName: row.dataset.exname, group: row.dataset.group, weight: d.w, reps: d.r, unit: d.u, synced: false, dropsetGroupId: groupId, dropsetStage: i + 1 };
+      const dItem = { id: uid(), date: row.dataset.date || todayISO(), sessionId: row.dataset.session, exerciseName: row.dataset.exname, group: row.dataset.group, weight: d.w, reps: d.r, unit: d.u, synced: false, dropsetGroupId: groupId, dropsetStage: i + 1 };
       state.setLog.push(dItem);
       if (typeof cloudInsertSet === "function") {
         Promise.resolve(cloudInsertSet(dItem)).then(ok => { if (ok) { dItem.synced = true; saveState(); } });
