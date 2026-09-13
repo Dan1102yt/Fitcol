@@ -41,3 +41,13 @@ Verificado de punta a punta controlando el navegador real: se registró un set, 
 ## Fase 2 — tracking del Asistente IA
 
 - No existía forma de medir cuántos testers usan el chat o el análisis de fotos — el chat vive solo en local y las llamadas al Worker no quedaban registradas. Se agregó la tabla `chat_events` + registro automático en cada uso exitoso (chat o foto).
+
+## Sesión 12–13 septiembre 2026
+
+- **Dropset en Entrenamiento** — se puede registrar un dropset (bajar peso y seguir en el mismo set, una o más veces) sin necesitar edición retroactiva en Supabase: el set principal y sus "gotas" se guardan juntos en un solo insert, codificados en `notas` como `DROPSET g=<id> s=<etapa>`.
+- **Reordenar ejercicios al editar una rutina personalizada** — arrastrar y soltar (drag & drop nativo) en PC, más botones ▲/▼ para celular, porque el drag nativo no funciona bien en táctil.
+- **Importador de historial de gimnasio desde Excel** — se generó (sin tocar el archivo original del usuario en Drive) un Excel nuevo con series/reps estimadas donde el registro viejo solo llevaba el peso, y se confirmó con una consulta directa a Supabase que las 42 filas quedaron bien importadas.
+- **Bug de fecha en Entrenamiento (el más importante de esta ronda)** — no existía forma de registrar un entrenamiento de un día anterior; todo se guardaba con la fecha de hoy sin importar qué sesión estuvieras viendo, así que un día perdido quedaba perdido. Se agregó un selector de fecha en "Sesión de hoy" (con botón "Ir a hoy"), y ahora sets, dropsets y cardio se guardan con la fecha que esté seleccionada, no con `todayISO()` fijo.
+- **Registro de Cardio (función nueva)** — tarjeta nueva en Entrenamiento para registrar bicicleta estática, aire, escaleras eléctricas, trotar u otro tipo, con duración total, si hubo intervalos, y notas libres. Igual que el dropset, no requirió tabla nueva en Supabase — va codificado en `notas` de `entrenamientos` (`CARDIO tipo=... dur=... intervalos=...`).
+- **Catálogo de alimentos ampliado** — 18 alimentos nuevos en el buscador rápido de "+ Registrar comida" (antes solo tenía platos colombianos caseros): productos Bimbo (pan tajado, Gansito), Ramo (Chocoramo/Chocorramo, Ponqué), galletas Noel (Saltín, Ducales, Festival), Papas Margarita, sándwiches (jamón y queso, pollo, atún, club) y comida rápida genérica (hamburguesa, perro caliente, pizza, cereal, yogurt griego, batido de proteína). Datos nutricionales investigados con fuentes reales, no inventados. Verificado en vivo en fitcol.fit que la búsqueda encuentra cada uno.
+- Todo lo anterior ya está subido a GitHub y desplegado en fitcol.fit (`main` al día al cierre de esta sesión).
