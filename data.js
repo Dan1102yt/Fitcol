@@ -9,13 +9,16 @@ const FOODS = {
       { name: "Empanadas de pipián", kcal: 280, p: 8, c: 38, f: 10, ingredientes: ["masa de maíz","papa criolla","arveja amarilla","hogao","ají"], preparacion: "Forma discos de masa, rellena con papa y pipián. Cierra en media luna. Fríe en aceite caliente hasta dorar." },
       { name: "Huevos pericos con arepa", kcal: 390, p: 20, c: 32, f: 18, ingredientes: ["2 huevos","1 tomate","1/4 cebolla cabezona","cilantro","1 arepa mediana","aceite","sal"], preparacion: "Sofríe cebolla y tomate picados. Agrega huevos batidos y revuelve. Asa la arepa. Sirve juntos." },
       { name: "Arepas de maíz con mantequilla", kcal: 340, p: 8, c: 52, f: 12, ingredientes: ["2 arepas de maíz blanco","20g mantequilla","sal al gusto"], preparacion: "Asa las arepas en plancha o parrilla. Unta mantequilla en caliente y añade sal." },
-      { name: "Pandebono con café", kcal: 290, p: 10, c: 38, f: 11, ingredientes: ["3 pandebonos","1 taza café tinto o con leche"], preparacion: "Calienta los pandebonos en horno 5 min. Acompaña con tinto o café con leche." }
+      { name: "Pandebono con café", kcal: 290, p: 10, c: 38, f: 11, ingredientes: ["3 pandebonos","1 taza café tinto o con leche"], preparacion: "Calienta los pandebonos en horno 5 min. Acompaña con tinto o café con leche." },
+      { name: "Yogurt griego con granola", kcal: 280, p: 15, c: 32, f: 9, ingredientes: ["150g yogurt griego natural","30g granola","miel opcional"], preparacion: "Sirve el yogurt en un bowl, añade la granola encima y un poco de miel si quieres." }
     ],
     balanceado: [
       { name: "Arepa de choclo con quesito", kcal: 380, p: 14, c: 52, f: 13, ingredientes: ["2 arepas de choclo","80g quesito campesino"], preparacion: "Calienta las arepas en parrilla o sartén hasta dorar. Sirve con quesito fresco." },
       { name: "Arepa de huevo", kcal: 420, p: 18, c: 45, f: 18, ingredientes: ["2 arepas de maíz","2 huevos","aceite para freír","sal"], preparacion: "Fríe la arepa en aceite caliente. Haz un hueco, inyecta el huevo batido y sella. Fríe hasta dorar." },
       { name: "Calentado con huevo", kcal: 520, p: 22, c: 68, f: 16, ingredientes: ["1 taza frijoles cocidos","1 taza arroz cocido","2 huevos","cebolla larga","cilantro","aceite"], preparacion: "Sofríe cebolla, agrega frijoles y arroz del día anterior. Prepara los huevos al gusto. Sirve todo junto." },
-      { name: "Chocolate con pan y queso", kcal: 480, p: 16, c: 62, f: 18, ingredientes: ["1 taza chocolate de mesa","1 taza leche","2 panes de sal","60g queso campesino"], preparacion: "Disuelve el chocolate en leche caliente. Sirve con pan y queso para mojar." }
+      { name: "Chocolate con pan y queso", kcal: 480, p: 16, c: 62, f: 18, ingredientes: ["1 taza chocolate de mesa","1 taza leche","2 panes de sal","60g queso campesino"], preparacion: "Disuelve el chocolate en leche caliente. Sirve con pan y queso para mojar." },
+      { name: "Pan tajado Bimbo con mantequilla (2 tajadas)", kcal: 165, p: 5, c: 28, f: 5, ingredientes: ["2 tajadas de pan Bimbo","10g mantequilla"], preparacion: "Tuesta las tajadas si quieres y unta la mantequilla en caliente." },
+      { name: "Cereal con leche", kcal: 230, p: 8, c: 42, f: 4, ingredientes: ["1 taza de cereal","1 taza de leche"], preparacion: "Sirve el cereal en un bowl y añade la leche fría." }
     ],
     chatarra: [
       { name: "Tamal tolimense", kcal: 580, p: 24, c: 72, f: 20, ingredientes: ["masa de maíz aliñada","arroz","arveja","zanahoria","cerdo","pollo","huevo duro","hojas de plátano"], preparacion: "Arma el tamal con todos los ingredientes en hoja de plátano. Cocina al vapor 2 horas o calienta uno ya hecho." },
@@ -30,18 +33,22 @@ const FOODS = {
       { name: "Sopa de lentejas con arroz", kcal: 480, p: 22, c: 72, f: 8, ingredientes: ["lentejas","zanahoria","papa","cebolla","tomate","comino","arroz"], preparacion: "Sofríe cebolla y tomate. Agrega lentejas, papa y zanahoria. Cocina 25 min. Sirve con arroz." },
       { name: "Ajiaco bogotano", kcal: 520, p: 32, c: 58, f: 14, ingredientes: ["pollo","papa criolla","papa sabanera","papa pastusa","mazorca","guascas","crema de leche","alcaparras"], preparacion: "Cocina las papas y el pollo con guascas y mazorca en agua 45 min. Sirve con crema y alcaparras al lado." },
       { name: "Sudado de pollo con papa", kcal: 540, p: 34, c: 52, f: 14, ingredientes: ["pollo en presas","papa","tomate","cebolla","cilantro","comino","arroz"], preparacion: "Sofríe cebolla y tomate, agrega pollo y papa. Cubre con agua y cocina tapado 30 min. Sirve con arroz." },
-      { name: "Arroz con pollo colombiano", kcal: 620, p: 36, c: 74, f: 16, ingredientes: ["pollo en presas","arroz","arveja","zanahoria","pimentón","cebolla","ajo","comino","achiote"], preparacion: "Sofríe las verduras con pollo. Agrega arroz y caldo. Cocina tapado a fuego bajo 25 min." }
+      { name: "Arroz con pollo colombiano", kcal: 620, p: 36, c: 74, f: 16, ingredientes: ["pollo en presas","arroz","arveja","zanahoria","pimentón","cebolla","ajo","comino","achiote"], preparacion: "Sofríe las verduras con pollo. Agrega arroz y caldo. Cocina tapado a fuego bajo 25 min." },
+      { name: "Sándwich de pollo", kcal: 420, p: 28, c: 38, f: 14, ingredientes: ["2 tajadas de pan integral","120g pechuga de pollo desmechada o a la plancha","lechuga","tomate","1 cda mayonesa light"], preparacion: "Arma el sándwich con la pechuga, lechuga y tomate entre las tajadas de pan. Unta la mayonesa al gusto." },
+      { name: "Sándwich de atún", kcal: 380, p: 22, c: 34, f: 15, ingredientes: ["2 tajadas de pan integral","1 lata de atún en agua","1 cda mayonesa","lechuga","tomate"], preparacion: "Mezcla el atún escurrido con la mayonesa. Arma el sándwich con lechuga y tomate." }
     ],
     balanceado: [
       { name: "Sancocho de gallina con arroz", kcal: 680, p: 38, c: 72, f: 18, ingredientes: ["1/2 gallina criolla","papa","yuca","mazorca","plátano verde","cilantro","cebolla larga","ajo","arroz"], preparacion: "Cocina la gallina con papa, yuca y mazorca en agua 1.5 horas. Agrega cilantro al final. Sirve con arroz aparte." },
       { name: "Frijoles con chicharrón y arroz", kcal: 780, p: 34, c: 88, f: 26, ingredientes: ["frijoles cargamanto","chicharrón","arroz","plátano maduro","hogao","cebolla","comino"], preparacion: "Cocina los frijoles 1 hora. Fríe el chicharrón. Sirve con arroz, plátano y hogao." },
       { name: "Cazuela de mariscos", kcal: 580, p: 42, c: 38, f: 22, ingredientes: ["camarones","calamares","mejillones","leche de coco","cebolla","ajo","cilantro","crema de leche"], preparacion: "Sofríe cebolla y ajo. Agrega mariscos y leche de coco. Cocina 15 min. Incorpora crema al final." },
-      { name: "Posta negra cartagenera", kcal: 620, p: 44, c: 32, f: 28, ingredientes: ["lomo de res","panela","vino tinto","cebolla","ajo","tomate","papas","plátano"], preparacion: "Marina la carne. Dora en aceite y cocina en salsa de panela y vino 1.5 horas. Sirve con papas y plátano." }
+      { name: "Posta negra cartagenera", kcal: 620, p: 44, c: 32, f: 28, ingredientes: ["lomo de res","panela","vino tinto","cebolla","ajo","tomate","papas","plátano"], preparacion: "Marina la carne. Dora en aceite y cocina en salsa de panela y vino 1.5 horas. Sirve con papas y plátano." },
+      { name: "Sándwich de jamón y queso", kcal: 360, p: 19, c: 30, f: 19, ingredientes: ["2 tajadas de pan Bimbo","2 lonchas de jamón","1 tajada de queso","10g mantequilla"], preparacion: "Unta la mantequilla en el pan. Arma el sándwich con el jamón y el queso. Tuesta en sartén o sándwichera si quieres." }
     ],
     chatarra: [
       { name: "Bandeja paisa completa", kcal: 1100, p: 58, c: 112, f: 42, ingredientes: ["frijoles rojos","arroz blanco","chicharrón","carne molida","chorizo antioqueño","morcilla","plátano maduro frito","huevo frito","arepa","aguacate"], preparacion: "Prepara cada componente por separado. Sirve todos juntos en plato grande." },
       { name: "Frijoles con chicharrón y arroz", kcal: 780, p: 34, c: 88, f: 26, ingredientes: ["frijoles cargamanto","chicharrón","arroz","plátano maduro","hogao","cebolla","comino"], preparacion: "Cocina los frijoles 1 hora. Fríe el chicharrón. Sirve con arroz, plátano y hogao." },
-      { name: "Sancocho de gallina con arroz", kcal: 680, p: 38, c: 72, f: 18, ingredientes: ["1/2 gallina criolla","papa","yuca","mazorca","plátano verde","cilantro","cebolla larga","ajo","arroz"], preparacion: "Cocina la gallina con papa, yuca y mazorca en agua 1.5 horas. Agrega cilantro al final. Sirve con arroz aparte." }
+      { name: "Sancocho de gallina con arroz", kcal: 680, p: 38, c: 72, f: 18, ingredientes: ["1/2 gallina criolla","papa","yuca","mazorca","plátano verde","cilantro","cebolla larga","ajo","arroz"], preparacion: "Cocina la gallina con papa, yuca y mazorca en agua 1.5 horas. Agrega cilantro al final. Sirve con arroz aparte." },
+      { name: "Sándwich club", kcal: 540, p: 30, c: 40, f: 26, ingredientes: ["3 tajadas de pan tostado","100g pechuga de pollo","2 lonchas de tocineta","lechuga","tomate","2 cdas mayonesa"], preparacion: "Tuesta el pan. Arma en capas: pollo, tocineta, lechuga y tomate, con mayonesa entre cada capa. Corta en triángulos." }
     ]
   },
   cena: {
@@ -61,25 +68,36 @@ const FOODS = {
     chatarra: [
       { name: "Obleas con arequipe", kcal: 380, p: 6, c: 72, f: 8, ingredientes: ["4 obleas","4 cucharadas arequipe","queso rallado opcional"], preparacion: "Extiende arequipe sobre cada oblea. Añade queso si deseas. Arma en capas." },
       { name: "Mazamorra con bocadillo", kcal: 290, p: 6, c: 62, f: 3, ingredientes: ["1 taza maíz partido cocido","1 taza leche","azúcar","2 bocadillos"], preparacion: "Calienta el maíz cocinado con leche y azúcar. Sirve con bocadillo de guayaba al lado." },
-      { name: "Arroz con leche", kcal: 320, p: 8, c: 58, f: 7, ingredientes: ["1 taza arroz","2 tazas leche","canela","azúcar o panela","pizca de sal"], preparacion: "Cocina el arroz en agua. Agrega leche, canela y azúcar. Revuelve a fuego bajo 20 min hasta espesar." }
+      { name: "Arroz con leche", kcal: 320, p: 8, c: 58, f: 7, ingredientes: ["1 taza arroz","2 tazas leche","canela","azúcar o panela","pizca de sal"], preparacion: "Cocina el arroz en agua. Agrega leche, canela y azúcar. Revuelve a fuego bajo 20 min hasta espesar." },
+      { name: "Perro caliente completo", kcal: 600, p: 18, c: 62, f: 30, ingredientes: ["1 salchicha","1 pan para perro","papa ripio","queso rallado","salsa rosada, mostaza y piña"], preparacion: "Cocina la salchicha. Ponla en el pan y agrega las salsas, queso y papa ripio al gusto." },
+      { name: "Hamburguesa casera", kcal: 520, p: 28, c: 40, f: 26, ingredientes: ["120g carne molida","1 pan para hamburguesa","1 tajada de queso","lechuga","tomate","salsas al gusto"], preparacion: "Forma y cocina la carne a la plancha. Arma la hamburguesa con el queso, lechuga, tomate y salsas." },
+      { name: "Pizza porción (1 tajada)", kcal: 285, p: 12, c: 33, f: 11, ingredientes: ["1 tajada de pizza mediana (jamón y queso o pepperoni)"], preparacion: "Calienta la tajada en horno o sartén tapado unos minutos antes de servir." }
     ]
   },
   snack: {
     saludable: [
       { name: "Mango biche con sal y limón", kcal: 90, p: 1, c: 22, f: 0, ingredientes: ["1 mango biche","sal","limón","ají opcional"], preparacion: "Pela y pica el mango verde. Rocía con limón y sal. Agrega ají si deseas." },
       { name: "Lulada", kcal: 140, p: 1, c: 34, f: 0, ingredientes: ["3 lulos","azúcar al gusto","1 taza agua fría","hielo"], preparacion: "Extrae la pulpa de los lulos. Mezcla con agua fría y azúcar. Sirve con hielo, sin licuar para conservar la textura." },
-      { name: "Chontaduro con sal y miel", kcal: 180, p: 3, c: 38, f: 2, ingredientes: ["4 chontaduros cocidos","sal al gusto","miel o panela"], preparacion: "Cocina los chontaduros en agua con sal 45 min. Sirve con sal y un chorrito de miel." }
+      { name: "Chontaduro con sal y miel", kcal: 180, p: 3, c: 38, f: 2, ingredientes: ["4 chontaduros cocidos","sal al gusto","miel o panela"], preparacion: "Cocina los chontaduros en agua con sal 45 min. Sirve con sal y un chorrito de miel." },
+      { name: "Batido de proteína", kcal: 150, p: 25, c: 5, f: 2, ingredientes: ["1 scoop de proteína en polvo","250ml agua o leche deslactosada","hielo opcional"], preparacion: "Licúa o agita todo junto hasta disolver bien el polvo." }
     ],
     balanceado: [
       { name: "Bocadillo con queso", kcal: 220, p: 6, c: 42, f: 5, ingredientes: ["2 bocadillos de guayaba","60g queso blanco campesino"], preparacion: "Corta el bocadillo en rodajas. Sirve con queso fresco al lado o encima." },
       { name: "Patacones con hogao", kcal: 280, p: 4, c: 42, f: 10, ingredientes: ["1 plátano verde","aceite para freír","tomate","cebolla","cilantro","sal"], preparacion: "Fríe rodajas de plátano, aplasta y vuelve a freír. Sirve con hogao de tomate y cebolla." },
       { name: "Cocada blanca", kcal: 240, p: 2, c: 38, f: 9, ingredientes: ["1 taza coco rallado","1/2 taza azúcar","1/4 taza agua","vainilla"], preparacion: "Cocina el azúcar con agua hasta punto de caramelo suave. Agrega coco y vainilla. Moldea en porciones y deja enfriar." },
-      { name: "Cholado", kcal: 280, p: 2, c: 68, f: 1, ingredientes: ["hielo raspado","jarabe de frutas","frutas frescas","leche condensada","crema"], preparacion: "Raspa el hielo. Añade frutas, jarabe y terminaciones con leche condensada." }
+      { name: "Cholado", kcal: 280, p: 2, c: 68, f: 1, ingredientes: ["hielo raspado","jarabe de frutas","frutas frescas","leche condensada","crema"], preparacion: "Raspa el hielo. Añade frutas, jarabe y terminaciones con leche condensada." },
+      { name: "Galletas Saltín Noel (paquete, 4 unid)", kcal: 102, p: 2.6, c: 19, f: 1.9, ingredientes: ["1 paquete de galletas Saltín Noel (24g)"], preparacion: "Abre el paquete y consume directamente, solas o con queso/hogao." },
+      { name: "Galletas Ducales (3 unid)", kcal: 130, p: 2, c: 20, f: 5, ingredientes: ["3 galletas Ducales (27g)"], preparacion: "Consume directamente, solas o con mantequilla y queso." }
     ],
     chatarra: [
       { name: "Aborrajado de plátano", kcal: 320, p: 8, c: 48, f: 11, ingredientes: ["1 plátano maduro","queso campesino","harina de trigo","huevo","aceite"], preparacion: "Aplana rodajas de plátano, rellena con queso. Pasa por harina y huevo batido. Fríe hasta dorar." },
       { name: "Cholado", kcal: 280, p: 2, c: 68, f: 1, ingredientes: ["hielo raspado","jarabe de frutas","frutas frescas","leche condensada","crema"], preparacion: "Raspa el hielo. Añade frutas, jarabe y terminaciones con leche condensada." },
-      { name: "Cocada blanca", kcal: 240, p: 2, c: 38, f: 9, ingredientes: ["1 taza coco rallado","1/2 taza azúcar","1/4 taza agua","vainilla"], preparacion: "Cocina el azúcar con agua hasta punto de caramelo suave. Agrega coco y vainilla. Moldea en porciones y deja enfriar." }
+      { name: "Cocada blanca", kcal: 240, p: 2, c: 38, f: 9, ingredientes: ["1 taza coco rallado","1/2 taza azúcar","1/4 taza agua","vainilla"], preparacion: "Cocina el azúcar con agua hasta punto de caramelo suave. Agrega coco y vainilla. Moldea en porciones y deja enfriar." },
+      { name: "Chocoramo (Ramo)", kcal: 291, p: 4.7, c: 34.5, f: 15.6, ingredientes: ["1 paquete de Chocoramo (65g)"], preparacion: "Abre el paquete y consume directamente." },
+      { name: "Ponqué Ramo tradicional (1 tajada)", kcal: 160, p: 3, c: 24, f: 6, ingredientes: ["1 tajada de Ponqué Ramo (42g)"], preparacion: "Abre el paquete y consume directamente." },
+      { name: "Gansito Bimbo", kcal: 199, p: 2, c: 29, f: 8, ingredientes: ["1 Gansito Bimbo (50g)"], preparacion: "Abre el paquete y consume directamente." },
+      { name: "Galletas Festival de chocolate (6 unid)", kcal: 149, p: 1.2, c: 24, f: 5.4, ingredientes: ["6 galletas Festival de chocolate (33.6g)"], preparacion: "Abre el paquete y consume directamente." },
+      { name: "Papas Margarita naturales (bolsa individual)", kcal: 120, p: 1.5, c: 14, f: 7.5, ingredientes: ["1 bolsa individual de Papas Margarita natural (30g)"], preparacion: "Abre la bolsa y consume directamente." }
     ]
   }
 };
