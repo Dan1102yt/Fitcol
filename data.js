@@ -93,7 +93,7 @@ const FOODS = {
       { name: "Aborrajado de plátano", kcal: 320, p: 8, c: 48, f: 11, ingredientes: ["1 plátano maduro","queso campesino","harina de trigo","huevo","aceite"], preparacion: "Aplana rodajas de plátano, rellena con queso. Pasa por harina y huevo batido. Fríe hasta dorar." },
       { name: "Cholado", kcal: 280, p: 2, c: 68, f: 1, ingredientes: ["hielo raspado","jarabe de frutas","frutas frescas","leche condensada","crema"], preparacion: "Raspa el hielo. Añade frutas, jarabe y terminaciones con leche condensada." },
       { name: "Cocada blanca", kcal: 240, p: 2, c: 38, f: 9, ingredientes: ["1 taza coco rallado","1/2 taza azúcar","1/4 taza agua","vainilla"], preparacion: "Cocina el azúcar con agua hasta punto de caramelo suave. Agrega coco y vainilla. Moldea en porciones y deja enfriar." },
-      { name: "Chocoramo (Ramo)", kcal: 291, p: 4.7, c: 34.5, f: 15.6, ingredientes: ["1 paquete de Chocoramo (65g)"], preparacion: "Abre el paquete y consume directamente." },
+      { name: "Chocoramo / Chocorramo (Ramo)", kcal: 291, p: 4.7, c: 34.5, f: 15.6, ingredientes: ["1 paquete de Chocoramo (65g)"], preparacion: "Abre el paquete y consume directamente." },
       { name: "Ponqué Ramo tradicional (1 tajada)", kcal: 160, p: 3, c: 24, f: 6, ingredientes: ["1 tajada de Ponqué Ramo (42g)"], preparacion: "Abre el paquete y consume directamente." },
       { name: "Gansito Bimbo", kcal: 199, p: 2, c: 29, f: 8, ingredientes: ["1 Gansito Bimbo (50g)"], preparacion: "Abre el paquete y consume directamente." },
       { name: "Galletas Festival de chocolate (6 unid)", kcal: 149, p: 1.2, c: 24, f: 5.4, ingredientes: ["6 galletas Festival de chocolate (33.6g)"], preparacion: "Abre el paquete y consume directamente." },
